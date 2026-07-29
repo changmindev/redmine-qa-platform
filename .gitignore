@@ -1,0 +1,32 @@
+# 비밀값 — 절대 커밋 금지
+.env
+.env.local
+*.key
+
+# 런타임 생성 데이터 (팀 공유는 폴더째 전달)
+data/
+reports/
+project_prompts.json
+store/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# 에디터 / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

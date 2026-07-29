@@ -1,0 +1,30 @@
+[project]
+name = "redmine-report"
+version = "1.0.0"
+description = "Redmine 이슈를 QA 리포트와 테스트케이스로 바꿔주는 도구"
+requires-python = ">=3.10"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.coverage.run]
+source = ["redmine_report"]
+omit = ["*/templates/*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+# 가상환경·생성물은 검사 대상이 아니다
+exclude = [".venv", "venv", "data", "reports", "__pycache__", "build", "dist"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "C4"]
+ignore = [
+    "E501",   # 줄 길이는 formatter 에 맡긴다
+    "B008",   # dataclass field(default_factory=...) 패턴
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]

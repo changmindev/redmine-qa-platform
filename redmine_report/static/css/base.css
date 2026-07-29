@@ -1,0 +1,405 @@
+/* ============================================================
+   base.css — 디자인 토큰 + 공통 컴포넌트
+   두 화면(리포트 / 테스트케이스)이 함께 쓴다.
+
+   색상 원칙
+     · 계열색(series) : 정체성을 나타낼 때만. 고정 순서로 배정하고 절대 순환시키지 않는다.
+     · 순서색(ordinal): 우선순위처럼 '순서가 있는' 값. 파랑 한 색의 명도 단계.
+     · 상태색(status) : good / warn / serious / critical 판정 전용. 아이콘+라벨과 항상 함께.
+   위 팔레트는 색각 이상(CVD) 시뮬레이션과 대비 검사를 통과한 값이다.
+   ============================================================ */
+
+:root {
+  color-scheme: light;
+
+  /* 표면 */
+  --bg:            #f6f7f9;
+  --surface:       #ffffff;
+  --surface-2:     #f2f4f7;
+  --surface-3:     #e9edf2;
+  --surface-inset: #fbfcfd;
+
+  /* 글자 — 모두 배경 대비 4.5:1 이상(WCAG AA 본문 기준)을 만족하는 값 */
+  --text:       #101418;
+  --text-2:     #4a5462;
+  --text-muted: #616b79;
+  /* 옅은 배경 위에 얹는 강조 글자색. 브랜드색을 그대로 쓰면 대비가 3.9:1 로 모자란다. */
+  --accent-text: #2569b9;
+
+  /* 선 */
+  --border:        #e2e6ec;
+  --border-strong: #cdd4dd;
+  --grid:          #eef1f5;
+
+  /* 브랜드 = 계열색 1번 */
+  --accent:        #2a78d6;
+  --accent-hover:  #256abf;
+  --accent-soft:   #eaf2fd;
+  --accent-ink:    #ffffff;
+
+  /* 계열색 (고정 순서) */
+  --s1: #2a78d6;  /* 파랑   */
+  --s2: #eb6834;  /* 주황   */
+  --s3: #1baf7a;  /* 청록   */
+  --s4: #eda100;  /* 노랑   */
+
+  /* 순서색 — 진할수록 상위 등급 */
+  --o1: #0d366b;
+  --o2: #184f95;
+  --o3: #256abf;
+  --o4: #3987e5;
+  --o5: #86b6ef;
+
+  /* 상태색 (모드 불변) */
+  --good:     #0ca30c;
+  --warn:     #fab219;
+  --serious:  #ec835a;
+  --critical: #d03b3b;
+  --good-soft:     #e6f6e6;
+  --warn-soft:     #fdf3dd;
+  --serious-soft:  #fceee8;
+  --critical-soft: #fbeaea;
+
+  /* 간격 (4px 배수) */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-10: 40px;
+
+  /* 모서리 */
+  --r-sm: 6px; --r-md: 10px; --r-lg: 14px; --r-full: 999px;
+
+  /* 그림자 — 밝은 모드에서만 의미가 있다 */
+  --sh-1: 0 1px 2px rgba(16, 20, 24, .06), 0 1px 3px rgba(16, 20, 24, .04);
+  --sh-2: 0 4px 12px rgba(16, 20, 24, .08), 0 2px 4px rgba(16, 20, 24, .04);
+  --sh-pop: 0 12px 32px rgba(16, 20, 24, .16);
+
+  /* 모션 */
+  --dur: 140ms;
+  --ease: cubic-bezier(.2, .6, .3, 1);
+
+  --font: "Pretendard", "Pretendard Variable", system-ui, -apple-system,
+          "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+  --mono: "SFMono-Regular", Consolas, "D2Coding", monospace;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg:            #0f1216;
+  --surface:       #171b21;
+  --surface-2:     #1d222a;
+  --surface-3:     #262c36;
+  --surface-inset: #12161b;
+
+  --text:       #eef2f6;
+  --text-2:     #a8b3c1;
+  --text-muted: #828d9a;
+  --accent-text: #6da7ec;
+
+  --border:        #262c36;
+  --border-strong: #333b47;
+  --grid:          #21262e;
+
+  --accent:       #3987e5;
+  --accent-hover: #5598e7;
+  --accent-soft:  #16273c;
+  --accent-ink:   #ffffff;
+
+  --s1: #3987e5;
+  --s2: #d95926;
+  --s3: #199e70;
+  --s4: #c98500;
+
+  --o1: #b7d3f6;
+  --o2: #86b6ef;
+  --o3: #5598e7;
+  --o4: #2a78d6;
+  --o5: #184f95;
+
+  --good-soft:     #102a12;
+  --warn-soft:     #33280c;
+  --serious-soft:  #33211a;
+  --critical-soft: #331617;
+
+  --sh-1: 0 1px 2px rgba(0, 0, 0, .4);
+  --sh-2: 0 4px 14px rgba(0, 0, 0, .45);
+  --sh-pop: 0 16px 40px rgba(0, 0, 0, .6);
+}
+
+/* ── 리셋 ────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+h1, h2, h3, h4, p, figure { margin: 0; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+img, canvas { max-width: 100%; }
+
+:where(button, input, select, textarea) { font: inherit; color: inherit; }
+:where(button) { cursor: pointer; }
+/* 초점 표시. border-radius 는 건드리지 않는다 —
+   알약 모양 버튼이 초점을 받는 순간 사각형으로 변하는 걸 막기 위해서다. */
+:where(button, [tabindex]):focus-visible,
+:where(input, select, textarea, a):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* hidden 속성이 컴포넌트의 display 선언에 지지 않도록 못 박는다.
+   button{display:inline-flex} 같은 규칙이 [hidden] 의 기본 display:none 을 이기기 때문에,
+   이 한 줄이 없으면 JS 로 숨긴 버튼이 그대로 보인다. */
+[hidden] { display: none !important; }
+::selection { background: var(--accent-soft); color: var(--text); }
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: var(--r-full); border: 2px solid var(--bg); }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+
+/* ── 상단 앱바 ───────────────────────────────────────── */
+.appbar {
+  position: sticky; top: 0; z-index: 60;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: saturate(1.4) blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+.appbar-in {
+  max-width: 1560px; margin: 0 auto;
+  display: flex; align-items: center; gap: var(--sp-5);
+  padding: 0 var(--sp-6); height: 56px;
+}
+.brand {
+  display: flex; align-items: center; gap: var(--sp-2);
+  font-size: 15px; font-weight: 600; letter-spacing: -.01em; white-space: nowrap;
+}
+.brand b { font-weight: 700; }
+.brand-mark {
+  display: grid; place-items: center; width: 26px; height: 26px;
+  border-radius: 8px; background: var(--accent); color: var(--accent-ink);
+  font-weight: 700; font-size: 14px;
+}
+.appnav { display: flex; gap: var(--sp-1); }
+.appnav-tab {
+  padding: 7px 14px; border-radius: var(--r-full);
+  color: var(--text-2); font-size: 13.5px; font-weight: 500;
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease);
+}
+.appnav-tab:hover { background: var(--surface-2); color: var(--text); text-decoration: none; }
+.appnav-tab.active { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.appbar-right { margin-left: auto; display: flex; align-items: center; gap: var(--sp-3); }
+
+.theme-toggle {
+  display: flex; align-items: center; gap: var(--sp-2);
+  background: none; border: 0; padding: 6px 8px; border-radius: var(--r-full);
+  color: var(--text-2); font-size: 12.5px;
+}
+.theme-toggle:hover { background: var(--surface-2); color: var(--text); }
+.toggle-track {
+  width: 34px; height: 19px; border-radius: var(--r-full);
+  background: var(--surface-3); border: 1px solid var(--border);
+  position: relative; transition: background var(--dur) var(--ease);
+}
+.toggle-thumb {
+  position: absolute; top: 2px; left: 2px; width: 13px; height: 13px;
+  border-radius: 50%; background: var(--text-muted);
+  transition: transform var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+:root[data-theme="dark"] .toggle-track { background: var(--accent-soft); }
+:root[data-theme="dark"] .toggle-thumb { transform: translateX(15px); background: var(--accent); }
+
+/* ── 버튼 ────────────────────────────────────────────── */
+button, .btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 14px; min-height: 36px;
+  border: 1px solid transparent; border-radius: var(--r-sm);
+  background: var(--accent); color: var(--accent-ink);
+  font-size: 13px; font-weight: 600; white-space: nowrap;
+  transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease),
+              transform var(--dur) var(--ease), opacity var(--dur) var(--ease);
+}
+button:hover:not(:disabled) { background: var(--accent-hover); }
+button:active:not(:disabled) { transform: translateY(1px); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+
+button.ghost, .btn-refresh, .flt-mini {
+  background: var(--surface); color: var(--text-2); border-color: var(--border);
+}
+button.ghost:hover:not(:disabled), .btn-refresh:hover, .flt-mini:hover {
+  background: var(--surface-2); color: var(--text); border-color: var(--border-strong);
+}
+button.alt, .btn-pdf {
+  background: var(--surface-2); color: var(--text); border-color: var(--border);
+}
+button.alt:hover:not(:disabled), .btn-pdf:hover { background: var(--surface-3); }
+button.danger {
+  background: var(--surface); color: var(--critical); border-color: var(--border);
+}
+button.danger:hover:not(:disabled) { background: var(--critical-soft); border-color: var(--critical); }
+button.subtle { background: none; border-color: transparent; color: var(--text-muted); }
+button.subtle:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
+.btn-sm { padding: 5px 10px; min-height: 30px; font-size: 12px; }
+
+/* ── 폼 ──────────────────────────────────────────────── */
+input[type="text"], input[type="search"], input[type="number"], select, textarea, .dt-input {
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: var(--r-sm);
+  padding: 8px 11px; min-height: 36px;
+  font-size: 13.5px; font-family: inherit;
+  transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+textarea { line-height: 1.65; resize: vertical; }
+input::placeholder, textarea::placeholder { color: var(--text-muted); }
+input:focus, select:focus, textarea:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+select {
+  appearance: none; padding-right: 30px; cursor: pointer;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
+                    linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 15px) 50%, calc(100% - 10px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+label { font-size: 12.5px; font-weight: 600; color: var(--text-2); }
+input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+
+/* ── 카드 ────────────────────────────────────────────── */
+.card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: var(--sp-5);
+  box-shadow: var(--sh-1);
+}
+.card-title {
+  font-size: 13px; font-weight: 700; color: var(--text);
+  letter-spacing: -.01em; margin-bottom: var(--sp-4);
+  display: flex; align-items: center; gap: var(--sp-2);
+}
+.card-title .hint { font-weight: 500; color: var(--text-muted); font-size: 12px; }
+
+/* ── 배지 / 칩 ───────────────────────────────────────── */
+.chip, .tag, .stag, .badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: var(--r-full);
+  font-size: 11.5px; font-weight: 600; line-height: 1.7;
+  background: var(--surface-2); color: var(--text-2);
+  border: 1px solid var(--border);
+}
+.chip-zero { color: var(--text-muted); background: transparent; border-color: transparent; }
+.chip-indigo { background: var(--accent-soft); color: var(--accent-text); border-color: transparent; }
+.chip-amber  { background: var(--warn-soft); color: #8a6200; border-color: transparent; }
+.chip-green  { background: var(--good-soft); color: #0a7a0a; border-color: transparent; }
+.chip-blue   { background: var(--accent-soft); color: var(--accent-text); border-color: transparent; }
+:root[data-theme="dark"] .chip-amber { color: var(--warn); }
+:root[data-theme="dark"] .chip-green { color: var(--good); }
+
+/* 상태 배지 — 색만으로 뜻을 전달하지 않도록 항상 아이콘+글자를 함께 쓴다 */
+.badge-good     { background: var(--good-soft);     color: #0a7a0a;  border-color: transparent; }
+.badge-warn     { background: var(--warn-soft);     color: #8a6200;  border-color: transparent; }
+.badge-serious  { background: var(--serious-soft);  color: #a8461f;  border-color: transparent; }
+.badge-critical { background: var(--critical-soft); color: #c23434; border-color: transparent; }
+:root[data-theme="dark"] .badge-good     { color: var(--good); }
+:root[data-theme="dark"] .badge-warn     { color: var(--warn); }
+:root[data-theme="dark"] .badge-serious  { color: var(--serious); }
+:root[data-theme="dark"] .badge-critical { color: #f08a8a; }
+
+/* ── 표 ──────────────────────────────────────────────── */
+.table-wrap { overflow-x: auto; border-radius: var(--r-md); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th {
+  position: sticky; top: 0; z-index: 1;
+  background: var(--surface-2); color: var(--text-2);
+  font-size: 11.5px; font-weight: 700; letter-spacing: .02em;
+  text-align: left; padding: 9px 12px; white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+tbody td { padding: 9px 12px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:hover td { background: var(--surface-2); }
+td.num, th.num { text-align: center; font-variant-numeric: tabular-nums; }
+td.name { font-weight: 600; }
+
+/* ── 진행 막대 ───────────────────────────────────────── */
+.meter { height: 8px; background: var(--surface-3); border-radius: var(--r-full); overflow: hidden; }
+.meter > i { display: block; height: 100%; background: var(--accent); border-radius: var(--r-full); transition: width .4s var(--ease); }
+
+/* ── 모달 ────────────────────────────────────────────── */
+.modal {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(8, 11, 15, .55); backdrop-filter: blur(3px);
+  display: flex; align-items: center; justify-content: center; padding: var(--sp-5);
+}
+.modal[hidden] { display: none; }
+.modal-box {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); box-shadow: var(--sh-pop);
+  width: min(620px, 100%); max-height: 86vh; overflow: auto; padding: var(--sp-6);
+}
+.modal-box h3 { font-size: 16px; font-weight: 700; margin-bottom: var(--sp-2); }
+.modal-help { font-size: 12.5px; color: var(--text-muted); margin-bottom: var(--sp-4); }
+.modal-actions {
+  display: flex; align-items: center; gap: var(--sp-2);
+  margin-top: var(--sp-5); padding-top: var(--sp-4); border-top: 1px solid var(--border);
+}
+
+/* ── 토스트 ──────────────────────────────────────────── */
+#toast {
+  position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+  display: none; z-index: 200;
+  background: var(--text); color: var(--surface);
+  padding: 11px 18px; border-radius: var(--r-md);
+  font-size: 13px; font-weight: 500; box-shadow: var(--sh-pop);
+  max-width: min(560px, 90vw);
+}
+
+/* ── 로딩 ────────────────────────────────────────────── */
+/* 조회 중에는 뒷 화면을 완전히 가린다.
+   반투명으로 두면 이전 데이터가 비쳐 보여 '지금 보는 게 새 값인가' 헷갈린다. */
+#loading {
+  position: fixed; inset: 0; z-index: 150;
+  display: grid; place-content: center; gap: var(--sp-4); justify-items: center;
+  background: var(--bg);
+  color: var(--text-2); font-size: 13px;
+}
+#loading.hidden { display: none; }
+.spinner {
+  width: 30px; height: 30px; border-radius: 50%;
+  border: 3px solid var(--border); border-top-color: var(--accent);
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── 유틸 ────────────────────────────────────────────── */
+.hidden { display: none !important; }
+.muted { color: var(--text-muted); }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+.empty {
+  padding: var(--sp-10) var(--sp-5); text-align: center;
+  color: var(--text-muted); font-size: 13.5px; line-height: 1.9;
+  border: 1px dashed var(--border-strong); border-radius: var(--r-lg);
+  background: var(--surface-inset);
+}
+
+/* 손가락으로 조작하는 기기에서는 터치 대상을 키운다 (권장 44px) */
+@media (pointer: coarse) {
+  button, .btn { min-height: 42px; padding-inline: 16px; }
+  .btn-sm { min-height: 34px; }
+  input[type="checkbox"] { width: 20px; height: 20px; }
+  input[type="text"], select, textarea, .dt-input { min-height: 42px; }
+}

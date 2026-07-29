@@ -1,0 +1,13 @@
+# 윈도우와 맥을 오가며 작업할 때 줄바꿈이 통째로 바뀐 것처럼 보이는 것을 막는다.
+# 저장소 안은 항상 LF, 작업 폴더는 OS 기본값으로 꺼낸다.
+* text=auto
+
+# 이 둘만은 예외 — 줄바꿈이 틀리면 실행 자체가 안 된다.
+*.bat text eol=crlf
+*.sh  text eol=lf
+
+# 바이너리는 건드리지 않는다.
+*.png  binary
+*.jpg  binary
+*.pdf  binary
+*.xlsx binary

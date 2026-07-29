@@ -1,0 +1,296 @@
+/* ============================================================
+   dashboard.css — 이슈 현황 리포트 화면
+   ============================================================ */
+
+.layout {
+  display: grid;
+  grid-template-columns: 264px minmax(0, 1fr);
+  gap: var(--sp-6);
+  max-width: 1560px;
+  margin: 0 auto;
+  padding: var(--sp-6);
+  align-items: start;
+}
+
+/* ── 사이드바(필터 레일) ─────────────────────────────── */
+.sidebar {
+  position: sticky; top: 72px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); box-shadow: var(--sh-1);
+  padding: var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-2);
+  max-height: calc(100vh - 88px); overflow-y: auto;
+}
+.sidebar-logo { padding-bottom: var(--sp-4); border-bottom: 1px solid var(--border); margin-bottom: var(--sp-2); }
+.sb-eyebrow {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+.proj { font-size: 15px; font-weight: 700; margin-top: 3px; letter-spacing: -.01em; }
+.sb-section {
+  font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--text-muted); margin: var(--sp-4) 0 var(--sp-2);
+}
+.proj-row { display: flex; flex-direction: column; gap: var(--sp-2); }
+.proj-row input, .proj-row button { width: 100%; }
+
+.period-btns { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-2); }
+.period-btns button {
+  padding: 8px 0; background: var(--surface); color: var(--text-2);
+  border-color: var(--border); font-size: 12.5px;
+}
+.period-btns button:hover { background: var(--surface-2); color: var(--text); }
+.period-btns button.active {
+  background: var(--accent); color: var(--accent-ink); border-color: var(--accent);
+}
+
+.date-range { display: flex; flex-direction: column; gap: 4px; }
+.date-range .dt-input { width: 100%; }
+.date-range label { margin-top: var(--sp-2); }
+.date-range .btn-apply { margin-top: var(--sp-3); width: 100%; }
+.version-wrap select { width: 100%; }
+
+.sidebar-footer {
+  margin-top: var(--sp-5); padding-top: var(--sp-4);
+  border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: var(--sp-2);
+}
+.sidebar-footer button { width: 100%; }
+
+/* ── 본문 ────────────────────────────────────────────── */
+.main { display: flex; flex-direction: column; gap: var(--sp-5); min-width: 0; }
+.page-header { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-3); }
+.page-header h1 { font-size: 24px; font-weight: 700; letter-spacing: -.02em; }
+.page-header .meta { font-size: 12.5px; color: var(--text-muted); }
+.page-header .meta b { color: var(--text-2); }
+
+/* ── KPI 타일 ────────────────────────────────────────── */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--sp-4); }
+.kpi {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--r-lg); padding: var(--sp-4) var(--sp-5);
+  box-shadow: var(--sh-1); position: relative; overflow: hidden;
+}
+.kpi::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--accent);
+}
+.kpi.c-green::before { background: var(--good); }
+.kpi.c-blue::before  { background: var(--s1); }
+.kpi.c-amber::before { background: var(--warn); }
+.kpi.c-red::before   { background: var(--critical); }
+/* 큰 숫자는 비례 숫자(기본값). tabular-nums 는 표 안에서만 쓴다. */
+.kpi .val { font-size: 27px; font-weight: 700; letter-spacing: -.03em; line-height: 1.2; }
+.kpi .lbl { font-size: 12px; color: var(--text-muted); margin-top: 2px; font-weight: 500; }
+
+/* ── 그리드 ──────────────────────────────────────────── */
+.grid-1 { grid-column: 1 / -1; }
+.grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-5); }
+.top-section { align-items: start; }
+
+/* 차트 컨테이너는 x축 라벨 영역까지 포함한 높이를 준다 */
+.chart-hbar-wrap  { position: relative; height: 260px; }
+.chart-trend-wrap { position: relative; height: 280px; }
+
+.chart-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); margin-bottom: var(--sp-4); }
+.chart-head .card-title { margin-bottom: 0; }
+.view-toggle { display: flex; gap: 2px; background: var(--surface-2); padding: 2px; border-radius: var(--r-sm); }
+.view-toggle button {
+  background: none; border: 0; color: var(--text-muted);
+  padding: 4px 10px; min-height: 26px; font-size: 11.5px; border-radius: 4px;
+}
+.view-toggle button.on { background: var(--surface); color: var(--text); box-shadow: var(--sh-1); }
+.chart-table-view table { font-size: 12.5px; }
+.chart-table-view { max-height: 280px; overflow: auto; }
+
+/* ── 가로 막대 (상태 · 우선순위) ─────────────────────── */
+/* 라벨 칸은 "완료(Dev-QA)" 같은 긴 상태명이 잘리지 않을 만큼 준다.
+   그래도 넘치면 말줄임 — 전체 이름은 title 속성으로 보인다. */
+.bar-row, .pri-bar-row {
+  display: grid; grid-template-columns: minmax(96px, 124px) minmax(60px, 1fr) 104px;
+  align-items: center; gap: var(--sp-3); margin-bottom: 9px;
+}
+.bar-label, .pri-label {
+  font-size: 12.5px; font-weight: 600; color: var(--text-2);
+  display: flex; align-items: center; gap: 6px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 색은 작은 표식(swatch)이 지고, 글자는 항상 본문 색을 쓴다 */
+.swatch {
+  display: inline-block;
+  width: 9px; height: 9px; border-radius: 3px; flex: 0 0 auto;
+  background: var(--text-muted);
+}
+/* display:block 이 반드시 있어야 한다.
+   마크업이 <span> 이라 기본값은 inline 인데, inline 요소는 width/height 를 무시한다.
+   그러면 막대가 높이 0 으로 접혀 색이 아예 보이지 않는다. */
+.bar-track, .pri-track {
+  display: block;
+  height: 10px; background: var(--surface-3); border-radius: var(--r-full); overflow: hidden;
+}
+.bar-fill, .pri-fill {
+  display: block;
+  height: 100%; border-radius: var(--r-full);
+  background: var(--text-muted);
+  transition: width .45s var(--ease);
+}
+
+/* 색 배정은 스타일시트가 갖는다 — JS 는 클래스 이름만 붙인다.
+   상태(정체성)는 계열색 s1~s4, 우선순위(순서)는 파랑 명도 단계 o1~o5. */
+.swatch.s1, .bar-fill.s1 { background: var(--s1); }
+.swatch.s2, .bar-fill.s2 { background: var(--s2); }
+.swatch.s3, .bar-fill.s3 { background: var(--s3); }
+.swatch.s4, .bar-fill.s4 { background: var(--s4); }
+.swatch.sx, .bar-fill.sx { background: var(--text-muted); }
+
+.swatch.o1, .bar-fill.o1 { background: var(--o1); }
+.swatch.o2, .bar-fill.o2 { background: var(--o2); }
+.swatch.o3, .bar-fill.o3 { background: var(--o3); }
+.swatch.o4, .bar-fill.o4 { background: var(--o4); }
+.swatch.o5, .bar-fill.o5 { background: var(--o5); }
+.bar-cnt, .pri-cnt {
+  font-size: 12px; color: var(--text-muted); text-align: right;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+
+/* ── 릴리스 준비도 ───────────────────────────────────── */
+.release-card { border-left: 3px solid var(--border-strong); }
+.release-card.lv-ready    { border-left-color: var(--good); }
+.release-card.lv-caution  { border-left-color: var(--warn); }
+.release-card.lv-blocked  { border-left-color: var(--critical); }
+
+.gate-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); margin-bottom: var(--sp-4); }
+.gate-badge {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 14px; border-radius: var(--r-full);
+  font-size: 13.5px; font-weight: 700; white-space: nowrap;
+}
+.gate-badge .dot { width: 9px; height: 9px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
+.lv-ready   .gate-badge { background: var(--good-soft);     color: #0a7a0a; }
+.lv-caution .gate-badge { background: var(--warn-soft);     color: #8a6200; }
+.lv-blocked .gate-badge { background: var(--critical-soft); color: #c23434; }
+:root[data-theme="dark"] .lv-ready   .gate-badge { color: var(--good); }
+:root[data-theme="dark"] .lv-caution .gate-badge { color: var(--warn); }
+:root[data-theme="dark"] .lv-blocked .gate-badge { color: #f08a8a; }
+.gate-scope { font-size: 12.5px; color: var(--text-muted); }
+
+.gate-reasons:empty { display: none; }
+.gate-reasons { display: flex; flex-direction: column; gap: 6px; margin-bottom: var(--sp-5); }
+.gate-reason {
+  display: flex; align-items: flex-start; gap: 8px;
+  font-size: 13px; padding: 9px 12px; border-radius: var(--r-sm);
+  background: var(--critical-soft); color: var(--text);
+}
+.gate-reason.warn { background: var(--warn-soft); }
+.gate-reason .ico { flex: 0 0 auto; }
+
+.readiness-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: var(--sp-4); }
+.readiness-item {
+  background: var(--surface-inset); border: 1px solid var(--border);
+  border-radius: var(--r-md); padding: var(--sp-4);
+}
+.readiness-item .rl { font-size: 11.5px; color: var(--text-muted); font-weight: 600; }
+.readiness-item .rv { font-size: 21px; font-weight: 700; letter-spacing: -.02em; margin: 2px 0 8px; }
+.readiness-item .rsub { font-size: 11.5px; color: var(--text-muted); margin-top: 6px; }
+
+.blocker-list:empty { display: none; }
+.blocker-list { margin-top: var(--sp-5); display: flex; flex-direction: column; gap: 6px; }
+.blocker-row {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: 9px 12px; border-radius: var(--r-sm);
+  background: var(--surface-inset); border: 1px solid var(--border); font-size: 12.5px;
+}
+.blocker-row .bid { font-weight: 700; font-variant-numeric: tabular-nums; flex: 0 0 auto; }
+.blocker-row .bsub { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── 담당자 워크로드 ─────────────────────────────────── */
+.wl-summary {
+  display: flex; align-items: flex-start; gap: 8px;
+  font-size: 12.5px; color: var(--text-2);
+  background: var(--surface-inset); border: 1px solid var(--border);
+  border-radius: var(--r-sm); padding: 10px 12px; margin-bottom: var(--sp-4);
+}
+/* 기준선이 무엇인지 알려주는 범례. 선 하나만 그어두면 아무도 뜻을 모른다. */
+.wl-legend {
+  display: flex; flex-wrap: wrap; gap: 5px 20px;
+  margin-bottom: var(--sp-4); font-size: 11.5px; color: var(--text-muted);
+}
+.wl-legend:empty { display: none; }
+.wl-legend-item { display: inline-flex; align-items: center; gap: 7px; }
+.wl-legend-item b { color: var(--text-2); font-variant-numeric: tabular-nums; font-weight: 700; }
+/* 막대 위의 세로선과 똑같이 생긴 작은 견본 */
+.wl-legend-line {
+  display: inline-block; flex: 0 0 auto;
+  width: 2px; height: 13px; border-radius: 1px;
+  background: var(--text-2); box-shadow: 0 0 0 1.5px var(--surface);
+}
+
+/* 마지막 칸은 max-content — 배지 내용에 맞춰 폭이 잡히므로 줄바꿈이 생기지 않는다.
+   고정 폭(150px)으로 두면 "3건 · 부하 12  🕗3  ⛔과부하" 가 넘쳐 두 줄이 된다. */
+.wl-row {
+  display: grid;
+  grid-template-columns: minmax(84px, 132px) minmax(60px, 1fr) max-content;
+  align-items: center; gap: var(--sp-3); margin-bottom: 10px;
+}
+.wl-name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* overflow:hidden 을 두지 않는다 — 두면 기준선(.wl-line)이 잘려 보이지 않는다.
+   채움 막대가 자체 radius 를 갖고 있어 클리핑이 필요 없다. */
+.wl-track {
+  display: block;
+  height: 12px; background: var(--surface-3);
+  border-radius: var(--r-full); position: relative;
+}
+/* 판정에 따라 색을 채운다 — 선 하나만으로는 상태가 눈에 들어오지 않는다.
+   display:block 필수 — <span> 은 inline 이라 height 가 먹지 않는다. */
+.wl-fill {
+  display: block;
+  height: 100%; border-radius: var(--r-full);
+  background: var(--accent);
+  transition: width .45s var(--ease);
+}
+.wl-fill.over   { background: var(--critical); }
+.wl-fill.risk   { background: var(--serious); }
+.wl-fill.easy   { background: var(--good); }
+.wl-fill.normal { background: var(--s1); }
+.wl-meta {
+  display: flex; align-items: center; justify-content: flex-end;
+  flex-wrap: nowrap; gap: 6px; white-space: nowrap;
+  font-size: 11.5px; color: var(--text-muted); font-variant-numeric: tabular-nums;
+}
+.wl-meta > * { flex: 0 0 auto; }
+.wl-num { min-width: 88px; text-align: right; }
+/* 과부하 기준선 — 채운 색과 구분되도록 표면색 테두리를 두른다 */
+.wl-line {
+  position: absolute; top: -4px; bottom: -4px; width: 2px; border-radius: 1px;
+  background: var(--text-2);
+  box-shadow: 0 0 0 1.5px var(--surface);
+  cursor: help;
+}
+
+/* ── 담당자 표 정렬 헤더 ─────────────────────────────── */
+#assignee-table thead th { cursor: pointer; user-select: none; }
+#assignee-table thead th:hover { color: var(--text); }
+#assignee-table thead th.sorted { color: var(--accent-text); }
+.si { opacity: .5; font-size: 10px; margin-left: 2px; }
+th.sorted .si { opacity: 1; }
+
+/* ── 반응형 ──────────────────────────────────────────── */
+@media (max-width: 1100px) {
+  .layout { grid-template-columns: 1fr; padding: var(--sp-4); }
+  .sidebar { position: static; max-height: none; }
+  .grid-2 { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .appbar-in { padding: 0 var(--sp-4); gap: var(--sp-3); }
+  .brand span:not(.brand-mark), .brand b { display: none; }
+  .layout { padding: var(--sp-3); gap: var(--sp-4); }
+  .page-header h1 { font-size: 20px; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: var(--sp-3); }
+  .kpi .val { font-size: 22px; }
+  .bar-row, .pri-bar-row { grid-template-columns: minmax(70px, 92px) minmax(40px, 1fr) 78px; gap: var(--sp-2); }
+  .bar-cnt, .pri-cnt { font-size: 11px; }
+  /* 좁은 화면에서는 배지 줄을 아래로 내려 보낸다 — 옆으로 밀어 넣으면 막대가 사라진다 */
+  .wl-row { grid-template-columns: minmax(76px, 1fr) minmax(60px, 2fr); row-gap: 4px; }
+  .wl-meta { grid-column: 1 / -1; justify-content: flex-start; flex-wrap: wrap; white-space: normal; }
+  .wl-num { min-width: 0; text-align: left; }
+  .theme-toggle span { display: none; }
+}

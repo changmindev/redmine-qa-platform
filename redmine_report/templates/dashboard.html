@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>이슈 현황 리포트 · Redmine QA</title>
+<script>
+  // 첫 페인트 전에 테마를 적용해 화면이 번쩍이지 않게 한다.
+  try {
+    var t = localStorage.getItem('tc_theme');
+    if (t) document.documentElement.setAttribute('data-theme', t);
+  } catch (e) {}
+</script>
+<link rel="stylesheet" href="{{ static_url('css/base.css') }}">
+<link rel="stylesheet" href="{{ static_url('css/dashboard.css') }}">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head>
+<body>
+
+<div id="loading"><div class="spinner"></div><p>데이터 불러오는 중…</p></div>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<header class="appbar">
+  <div class="appbar-in">
+    <div class="brand"><span class="brand-mark">Q</span><span>Redmine</span> <b>QA</b></div>
+    <nav class="appnav">
+      <a href="/" class="appnav-tab active">📊 리포트</a>
+      <a href="/testcases" class="appnav-tab">🧪 테스트케이스</a>
+    </nav>
+    <div class="appbar-right">
+      <button class="theme-toggle" onclick="toggleTheme()" title="밝은 화면 / 어두운 화면 전환">
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+        <span id="theme-label">라이트 모드</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="layout">
+  <!-- ── 필터 레일 : 이 화면의 모든 카드를 한 번에 좁힌다 ── -->
+  <aside class="sidebar" aria-label="조회 조건">
+    <div class="sidebar-logo">
+      <div class="sb-eyebrow">현재 프로젝트</div>
+      <div class="proj" id="sidebar-project">불러오는 중…</div>
+    </div>
+
+    <div class="sb-section">프로젝트</div>
+    <div class="proj-row">
+      <input type="text" id="project-id" value="{{ default_project }}" placeholder="프로젝트 ID"
+             title="Redmine 프로젝트 URL의 영문 ID">
+      <button class="btn-apply" onclick="applyProject()">적용</button>
+    </div>
+
+    <div class="sb-section">기간</div>
+    <div class="period-btns">
+      <button id="btn-1" onclick="loadMonths(1)">1개월</button>
+      <button id="btn-3" onclick="loadMonths(3)">3개월</button>
+      <button id="btn-6" onclick="loadMonths(6)">6개월</button>
+    </div>
+
+    <div class="sb-section">날짜 직접 지정</div>
+    <div class="date-range">
+      <label for="dt-from">시작일</label>
+      <input type="text" id="dt-from" class="dt-input" placeholder="2026-07-01" inputmode="numeric" maxlength="10">
+      <label for="dt-to">종료일</label>
+      <input type="text" id="dt-to" class="dt-input" placeholder="2026-07-07" inputmode="numeric" maxlength="10">
+      <button class="btn-apply" onclick="loadCustom()">적용</button>
+    </div>
+
+    <div class="sb-section">목표 버전</div>
+    <div class="version-wrap">
+      <select id="version-select" onchange="onVersionChange()" aria-label="목표 버전">
+        <option value="all">전체 버전</option>
+      </select>
+    </div>
+
+    <div class="sidebar-footer">
+      <button class="btn-refresh" onclick="refresh()">↺ 새로고침</button>
+      <button class="btn-pdf" onclick="downloadPdf()">⬇ PDF 리포트</button>
+    </div>
+  </aside>
+
+  <main class="main" id="main">
+    <div class="page-header">
+      <h1>이슈 현황 리포트</h1>
+      <div class="meta" id="meta-info">기간을 선택하면 데이터가 표시됩니다.</div>
+    </div>
+
+    <!-- ── 릴리스 준비도 : 목표 버전을 고르면 나타난다 ── -->
+    <section class="card release-card hidden" id="release-card" aria-labelledby="release-title">
+      <div class="gate-head">
+        <span class="card-title" id="release-title" style="margin:0">🚦 릴리스 준비도</span>
+        <span class="gate-badge" id="gate-badge"><span class="dot"></span><span id="gate-label">-</span></span>
+        <span class="gate-scope" id="gate-scope"></span>
+        <a class="chip" id="rtm-link" href="#" style="margin-left:auto">📋 추적 매트릭스</a>
+      </div>
+      <div class="gate-reasons" id="gate-reasons"></div>
+      <div class="readiness-grid" id="readiness-grid"></div>
+      <div class="blocker-list" id="blocker-list"></div>
+    </section>
+
+    <!-- ── KPI ── -->
+    <section class="kpi-grid" aria-label="핵심 지표">
+      <div class="kpi">        <div class="val" id="k-total">-</div><div class="lbl">전체 이슈</div></div>
+      <div class="kpi c-green"><div class="val" id="k-qa">-</div>   <div class="lbl">QA 완료</div></div>
+      <div class="kpi c-blue"> <div class="val" id="k-rate">-</div> <div class="lbl">QA 통과율</div></div>
+      <div class="kpi c-amber"><div class="val" id="k-days">-</div> <div class="lbl">평균 처리일</div></div>
+      <div class="kpi c-red">  <div class="val" id="k-wip">-</div>  <div class="lbl">진행중</div></div>
+    </section>
+
+    <div class="grid-2 top-section">
+      <section class="card">
+        <div class="chart-head">
+          <span class="card-title">트래커 분포</span>
+          <div class="view-toggle" role="group" aria-label="보기 방식">
+            <button class="on" data-view="chart" data-target="tracker">차트</button>
+            <button data-view="table" data-target="tracker">표</button>
+          </div>
+        </div>
+        <div class="chart-hbar-wrap" id="tracker-chart-wrap"><canvas id="trackerChart"></canvas></div>
+        <div class="chart-table-view hidden" id="tracker-table"></div>
+      </section>
+
+      <section class="card">
+        <div class="card-title">우선순위별 현황 <span class="hint">진할수록 상위</span></div>
+        <div id="priority-bars"></div>
+        <div style="margin-top:22px">
+          <div class="card-title">상태별 분포</div>
+          <div id="status-bars"></div>
+        </div>
+      </section>
+    </div>
+
+    <section class="card grid-1">
+      <div class="chart-head">
+        <span class="card-title">이슈 생성 · 해결 추이</span>
+        <div class="view-toggle" role="group" aria-label="보기 방식">
+          <button class="on" data-view="chart" data-target="trend">차트</button>
+          <button data-view="table" data-target="trend">표</button>
+        </div>
+      </div>
+      <div class="chart-trend-wrap" id="trend-chart-wrap"><canvas id="trendChart"></canvas></div>
+      <div class="chart-table-view hidden" id="trend-table"></div>
+    </section>
+
+    <!-- ── 담당자 워크로드 · 병목 ── -->
+    <section class="card grid-1">
+      <div class="card-title">담당자 워크로드 <span class="hint">미해결 이슈를 우선순위로 가중한 부하</span></div>
+      <div class="wl-summary" id="wl-summary"></div>
+      <div class="wl-legend" id="wl-legend"></div>
+      <div id="wl-rows"></div>
+    </section>
+
+    <section class="card grid-1">
+      <div class="card-title">담당자별 현황</div>
+      <div class="table-wrap">
+        <table id="assignee-table">
+          <thead>
+            <tr>
+              <th onclick="sortTable(0)" data-col="0">담당자 <span class="si">↕</span></th>
+              <th onclick="sortTable(1)" data-col="1" class="sorted num">전체 <span class="si">↓</span></th>
+              <th onclick="sortTable(2)" data-col="2" class="num">신규 <span class="si">↕</span></th>
+              <th onclick="sortTable(3)" data-col="3" class="num">진행중 <span class="si">↕</span></th>
+              <th onclick="sortTable(4)" data-col="4" class="num">작업완료 <span class="si">↕</span></th>
+              <th onclick="sortTable(5)" data-col="5" class="num">QA완료 <span class="si">↕</span></th>
+              <th onclick="sortTable(6)" data-col="6" class="num">평균처리일 <span class="si">↕</span></th>
+            </tr>
+          </thead>
+          <tbody id="assignee-tbody"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════
+   상태
+   ══════════════════════════════════════════════════════════ */
+let currentDateFrom = null, currentDateTo = null, currentVersion = 'all';
+let sortCol = 1, sortAsc = false;
+let trendChart = null, trackerChart = null;
+let _assigneeData = [], _lastStats = null, _firstLoad = true;
+
+/* 색 배정 규칙
+   · 상태  = 정체성 → 계열색을 '이름'에 고정 배정 (순위에 따라 바뀌지 않음)
+   · 우선순위 = 순서 → 파랑 한 색의 명도 단계
+   · 트래커  = 한 계열의 크기 비교 → 한 가지 색 (막대 길이가 이미 크기를 말한다) */
+const STATUS_ORDER = {{ status_order | tojson }};
+const SERIES = ['s1', 's2', 's3', 's4'];
+const PRIORITY_ORDER = ['즉시', '긴급', '높음', '보통', '낮음'];
+const ORDINAL = ['o1', 'o2', 'o3', 'o4', 'o5'];
+const LONG_TERM_DAYS = {{ long_term_days }};
+
+/* 색은 스타일시트가 갖는다. JS 는 '몇 번 색인지'만 정해 클래스를 붙인다.
+   (computed style 을 읽어 인라인으로 칠하면 변수명이 하나만 어긋나도 색이 통째로 사라진다) */
+function statusClass(name) {
+  const i = STATUS_ORDER.indexOf(name);
+  return i >= 0 && i < SERIES.length ? SERIES[i] : 'sx';
+}
+function priorityClass(name) {
+  const i = PRIORITY_ORDER.indexOf(name);
+  return ORDINAL[i >= 0 ? i : ORDINAL.length - 1];
+}
+/* Chart.js 는 실제 색 문자열이 필요하므로 여기서만 변수를 읽는다(값이 없으면 대체색). */
+function cssVar(name, fallback) {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return value || fallback || '#2a78d6';
+}
+
+/* ══════════════════════════════════════════════════════════
+   테마
+   ══════════════════════════════════════════════════════════ */
+function toggleTheme() {
+  const html = document.documentElement;
+  const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  html.setAttribute('data-theme', next);
+  try { localStorage.setItem('tc_theme', next); } catch (e) {}
+  syncThemeLabel();
+  if (_lastStats) render(_lastStats, document.getElementById('sidebar-project').textContent);
+}
+function syncThemeLabel() {
+  document.getElementById('theme-label').textContent =
+    document.documentElement.getAttribute('data-theme') === 'dark' ? '라이트 모드' : '다크 모드';
+}
+const tickColor = () => cssVar('--text-muted');
+const gridColor = () => cssVar('--grid');
+
+/* ══════════════════════════════════════════════════════════
+   유틸
+   ══════════════════════════════════════════════════════════ */
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+const toDateStr = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const addDays = (d, n) => { const r = new Date(d); r.setDate(r.getDate() + n); return r; };
+
+function normDate(s) {
+  const m = String(s || '').trim().match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+  if (!m) return null;
+  const iso = `${m[1]}-${String(+m[2]).padStart(2,'0')}-${String(+m[3]).padStart(2,'0')}`;
+  return isNaN(new Date(iso).getTime()) ? null : iso;
+}
+function mergeDateLabels(...maps) {
+  const keys = new Set();
+  maps.forEach(m => Object.keys(m || {}).forEach(k => keys.add(k)));
+  return [...keys].sort();
+}
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.style.display = 'block';
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => { t.style.display = 'none'; }, 4000);
+}
+const hasChart = () => typeof window.Chart !== 'undefined';
+
+/* ══════════════════════════════════════════════════════════
+   초기화
+   ══════════════════════════════════════════════════════════ */
+window.addEventListener('DOMContentLoaded', async () => {
+  syncThemeLabel();
+  const today = new Date();
+  document.getElementById('dt-to').value = toDateStr(today);
+  document.getElementById('dt-from').value = toDateStr(addDays(today, -30));
+  try {
+    const savedProj = localStorage.getItem('tc_project');
+    if (savedProj) document.getElementById('project-id').value = savedProj;
+  } catch (e) {}
+
+  document.querySelectorAll('.view-toggle button').forEach(btn => {
+    btn.addEventListener('click', () => switchView(btn.dataset.target, btn.dataset.view));
+  });
+
+  await loadVersions();
+  loadMonths(1);
+});
+
+function getProject() { return (document.getElementById('project-id').value || '').trim(); }
+
+async function applyProject() {
+  try { localStorage.setItem('tc_project', getProject()); } catch (e) {}
+  currentVersion = 'all';
+  await loadVersions();
+  document.getElementById('version-select').value = 'all';
+  if (currentDateFrom && currentDateTo) load(); else loadMonths(1);
+}
+
+async function loadVersions() {
+  const sel = document.getElementById('version-select');
+  sel.innerHTML = '<option value="all">전체 버전</option>';
+  try {
+    const res = await fetch('/api/versions?project_id=' + encodeURIComponent(getProject()));
+    const data = await res.json();
+    (data.versions || []).forEach(v => {
+      const opt = document.createElement('option');
+      opt.value = v.id;
+      const mark = v.status === 'open' ? '🟢' : v.status === 'locked' ? '🔒' : '✅';
+      opt.textContent = `${mark} ${v.name}`;
+      sel.appendChild(opt);
+    });
+  } catch (e) { console.warn('버전 목록을 불러오지 못했습니다:', e); }
+}
+
+function loadMonths(m) {
+  ['btn-1','btn-3','btn-6'].forEach(id => document.getElementById(id).classList.remove('active'));
+  document.getElementById('btn-' + m).classList.add('active');
+  const today = new Date();
+  currentDateTo = toDateStr(today);
+  currentDateFrom = toDateStr(addDays(today, -30 * m));
+  document.getElementById('dt-from').value = currentDateFrom;
+  document.getElementById('dt-to').value = currentDateTo;
+  load();
+}
+
+function loadCustom() {
+  const df = normDate(document.getElementById('dt-from').value);
+  const dt = normDate(document.getElementById('dt-to').value);
+  if (!df || !dt) { showToast('날짜를 YYYY-MM-DD 형식으로 입력하세요. (예: 2026-07-07)'); return; }
+  if (df > dt) { showToast('시작일이 종료일보다 늦을 수 없습니다.'); return; }
+  document.getElementById('dt-from').value = df;
+  document.getElementById('dt-to').value = dt;
+  ['btn-1','btn-3','btn-6'].forEach(id => document.getElementById(id).classList.remove('active'));
+  currentDateFrom = df; currentDateTo = dt;
+  load();
+}
+function onVersionChange() {
+  currentVersion = document.getElementById('version-select').value;
+  if (currentDateFrom && currentDateTo) load();
+}
+
+/* ══════════════════════════════════════════════════════════
+   데이터 로드
+   첫 로드만 전체 오버레이. 이후 재조회는 이전 화면을 흐리게 유지해
+   레이아웃이 튀지 않게 한다.
+   ══════════════════════════════════════════════════════════ */
+async function load() {
+  // 조회 중에는 화면을 완전히 덮고 로딩 표시만 남긴다.
+  // (이전 결과를 흐리게 남기면 새 데이터인지 옛 데이터인지 헷갈린다는 피드백 반영)
+  document.getElementById('loading').classList.remove('hidden');
+
+  try {
+    const params = new URLSearchParams({
+      date_from: currentDateFrom, date_to: currentDateTo,
+      version_id: currentVersion, project_id: getProject()
+    });
+    const res = await fetch('/api/report?' + params);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    render(data.stats, data.project);
+    loadReadiness();
+  } catch (e) {
+    showToast('데이터를 불러오지 못했습니다: ' + e.message);
+  } finally {
+    _firstLoad = false;
+    document.getElementById('loading').classList.add('hidden');
+  }
+}
+async function refresh() {
+  await fetch('/api/clear_cache', { method: 'POST' });
+  load();
+}
+function downloadPdf() {
+  if (!currentDateFrom || !currentDateTo) { showToast('기간을 먼저 선택하세요.'); return; }
+  const params = new URLSearchParams({
+    date_from: currentDateFrom, date_to: currentDateTo,
+    version_id: currentVersion, project_id: getProject()
+  });
+  window.location.href = '/api/pdf?' + params;
+}
+
+/* ══════════════════════════════════════════════════════════
+   릴리스 준비도
+   ══════════════════════════════════════════════════════════ */
+async function loadReadiness() {
+  const card = document.getElementById('release-card');
+  if (!currentVersion || currentVersion === 'all') { card.classList.add('hidden'); return; }
+
+  try {
+    const params = new URLSearchParams({ version_id: currentVersion, project_id: getProject() });
+    const res = await fetch('/api/release_readiness?' + params);
+    const d = await res.json();
+    if (d.error) throw new Error(d.error);
+    renderReadiness(d);
+    card.classList.remove('hidden');
+  } catch (e) {
+    card.classList.add('hidden');
+    console.warn('릴리스 준비도를 불러오지 못했습니다:', e);
+  }
+}
+
+function renderReadiness(d) {
+  const card = document.getElementById('release-card');
+  const verName = document.getElementById('version-select').selectedOptions[0]?.textContent || '';
+  card.classList.remove('lv-ready', 'lv-caution', 'lv-blocked');
+  card.classList.add('lv-' + d.gate.level);
+
+  const ICON = { ready: '✅', caution: '⚠️', blocked: '⛔' };
+  document.getElementById('gate-label').textContent = `${ICON[d.gate.level]} ${d.gate.label}`;
+  document.getElementById('gate-scope').textContent =
+    `${verName} · 이슈 ${d.issue_total}건 · 진행 기록 ${d.runs.length}회차`;
+
+  const rtm = new URLSearchParams({ version_id: d.version_id, project_id: getProject() });
+  document.getElementById('rtm-link').href = '/api/traceability.csv?' + rtm;
+
+  document.getElementById('gate-reasons').innerHTML =
+    d.gate.reasons.map(r => `<div class="gate-reason"><span class="ico">⛔</span><span>${esc(r)}</span></div>`).join('') +
+    d.gate.warnings.map(w => `<div class="gate-reason warn"><span class="ico">⚠️</span><span>${esc(w)}</span></div>`).join('');
+
+  const t = d.test, c = t.counts || {};
+  const eta = t.eta_days != null ? `약 ${t.eta_days}일 후 완료 예상` :
+              (t.remaining ? '실행 기록이 쌓이면 예상일이 표시됩니다' : '남은 항목 없음');
+
+  document.getElementById('readiness-grid').innerHTML = `
+    <div class="readiness-item">
+      <div class="rl">테스트 진행률</div>
+      <div class="rv">${t.progress}<span style="font-size:14px">%</span></div>
+      <div class="meter"><i style="width:${Math.min(t.progress,100)}%"></i></div>
+      <div class="rsub">${t.executed} / ${t.total}건 실행 · ${eta}</div>
+    </div>
+    <div class="readiness-item">
+      <div class="rl">통과율 <span title="Pass ÷ (Pass+Fail). 미시행·N/A는 제외합니다.">ⓘ</span></div>
+      <div class="rv">${t.pass_rate}<span style="font-size:14px">%</span></div>
+      <div class="meter"><i style="width:${Math.min(t.pass_rate,100)}%"></i></div>
+      <div class="rsub">Pass ${c.pass||0} · Fail ${c.fail||0} · Blocked ${c.blocked||0}</div>
+    </div>
+    <div class="readiness-item">
+      <div class="rl">미해결 결함</div>
+      <div class="rv">${d.defects.open}</div>
+      <div class="rsub">전체 ${d.defects.total}건 중 · Blocker ${d.defects.blockers.length}건</div>
+    </div>
+    <div class="readiness-item">
+      <div class="rl">테스트 미작성 이슈</div>
+      <div class="rv">${d.uncovered_count}</div>
+      <div class="rsub">${d.uncovered_count ? '이 이슈들은 검증 근거가 없습니다' : '모든 이슈에 케이스가 있습니다'}</div>
+    </div>`;
+
+  const blockers = d.defects.blockers.slice(0, 5);
+  document.getElementById('blocker-list').innerHTML = blockers.length ? `
+    <div class="card-title" style="margin-bottom:8px">출시를 막는 결함</div>
+    ${blockers.map(b => `
+      <div class="blocker-row">
+        <span class="badge badge-critical">${esc(b.priority)}</span>
+        <a class="bid" href="${esc(b.url)}" target="_blank" rel="noopener">#${esc(b.id)}</a>
+        <span class="bsub">${esc(b.subject)}</span>
+        <span class="muted">${esc(b.assignee)}</span>
+      </div>`).join('')}` : '';
+}
+
+/* ══════════════════════════════════════════════════════════
+   렌더링
+   ══════════════════════════════════════════════════════════ */
+function render(stats, project) {
+  _lastStats = stats;
+  const verName = document.getElementById('version-select').selectedOptions[0]?.textContent || '전체';
+  document.getElementById('sidebar-project').textContent = project;
+  document.getElementById('meta-info').innerHTML =
+    `<b>${esc(project)}</b> · ${esc(currentDateFrom)} ~ ${esc(currentDateTo)} · 버전: ${esc(verName)}`;
+
+  document.getElementById('k-total').textContent = stats.total;
+  document.getElementById('k-qa').textContent    = stats.qa_count;
+  document.getElementById('k-rate').textContent  = stats.qa_rate + '%';
+  document.getElementById('k-days').textContent  = stats.avg_days_total === '-' ? '-' : stats.avg_days_total + '일';
+  document.getElementById('k-wip').textContent   = stats.wip_count;
+
+  renderPriorityBars(stats);
+  renderStatusBars(stats);
+  renderTracker(stats);
+  renderTrend(stats);
+  renderWorkload(stats.workload || { rows: [], summary: '' });
+
+  _assigneeData = Object.entries(stats.assignee_stats).map(([name, s]) => ({
+    name, total: s.total || 0, new_: s.new || 0, prog: s.progress || 0,
+    res: s.resolved || 0, qa: s.qa || 0, days: s.avg_days
+  }));
+  renderTable();
+}
+
+function barRow(label, count, pct, tone) {
+  // 폭이 0 이어도 색이 보이도록 최소 폭을 준다(0건은 제외).
+  const width = count > 0 ? Math.max(pct, 3) : 0;
+  return `<div class="bar-row">
+    <span class="bar-label" title="${esc(label)}"><span class="swatch ${tone}"></span>${esc(label)}</span>
+    <span class="bar-track"><span class="bar-fill ${tone}" style="width:${width}%"></span></span>
+    <span class="bar-cnt">${count}건 (${pct}%)</span>
+  </div>`;
+}
+
+function renderPriorityBars(stats) {
+  const total = stats.total || 1;
+  const known = PRIORITY_ORDER.filter(p => stats.priority_count[p] != null).map(p => [p, stats.priority_count[p]]);
+  const extra = Object.entries(stats.priority_count).filter(([p]) => !PRIORITY_ORDER.includes(p));
+  const rows = known.concat(extra);
+  document.getElementById('priority-bars').innerHTML = rows.length
+    ? rows.map(([p, cnt]) => barRow(p, cnt, Math.round(cnt / total * 100), priorityClass(p))).join('')
+    : '<p class="muted" style="font-size:12.5px">데이터가 없습니다.</p>';
+}
+
+function renderStatusBars(stats) {
+  const total = stats.total || 1;
+  // 설정된 상태를 먼저, 그 밖의 상태는 뒤에 — 순서가 데이터에 따라 흔들리지 않게 한다.
+  const known = STATUS_ORDER.filter(s => stats.status_count[s] != null).map(s => [s, stats.status_count[s]]);
+  const extra = Object.entries(stats.status_count).filter(([s]) => !STATUS_ORDER.includes(s));
+  const rows = known.concat(extra);
+  document.getElementById('status-bars').innerHTML = rows.length
+    ? rows.map(([s, cnt]) => barRow(s, cnt, Math.round(cnt / total * 100), statusClass(s))).join('')
+    : '<p class="muted" style="font-size:12.5px">데이터가 없습니다.</p>';
+}
+
+/* 트래커 — 한 계열의 크기 비교이므로 색은 하나. 막대 길이가 이미 크기를 말한다. */
+function renderTracker(stats) {
+  const entries = Object.entries(stats.tracker_count).sort((a, b) => b[1] - a[1]);
+  document.getElementById('tracker-table').innerHTML = simpleTable(['트래커', '건수'], entries);
+
+  if (!hasChart()) { switchView('tracker', 'table', true); return; }
+  if (trackerChart) trackerChart.destroy();
+
+  trackerChart = new Chart(document.getElementById('trackerChart'), {
+    type: 'bar',
+    data: {
+      labels: entries.map(([t]) => t),
+      datasets: [{ label: '이슈 수', data: entries.map(([, v]) => v),
+                   backgroundColor: cssVar('--s1'), borderRadius: 4, borderSkipped: false, barThickness: 16 }]
+    },
+    options: {
+      indexAxis: 'y', maintainAspectRatio: false,
+      scales: {
+        x: { beginAtZero: true, ticks: { color: tickColor(), precision: 0 }, grid: { color: gridColor() }, border: { display: false } },
+        y: { ticks: { color: tickColor(), font: { size: 12 } }, grid: { display: false }, border: { display: false } }
+      },
+      plugins: { legend: { display: false }, tooltip: tooltipStyle() }
+    }
+  });
+}
+
+function renderTrend(stats) {
+  const labels = mergeDateLabels(stats.daily_created, stats.daily_resolved);
+  const created = labels.map(d => stats.daily_created[d] || 0);
+  const resolved = labels.map(d => (stats.daily_resolved || {})[d] || 0);
+  document.getElementById('trend-table').innerHTML =
+    simpleTable(['날짜', '생성', '해결'], labels.map((d, i) => [d, created[i], resolved[i]]));
+
+  if (!hasChart()) { switchView('trend', 'table', true); return; }
+  if (trendChart) trendChart.destroy();
+
+  const mk = (label, data, color) => ({
+    label, data, borderColor: color, backgroundColor: color + '14',
+    fill: true, tension: .35, borderWidth: 2,
+    pointRadius: 0, pointHoverRadius: 5, pointBackgroundColor: color,
+    pointBorderColor: cssVar('--surface'), pointBorderWidth: 2
+  });
+
+  trendChart = new Chart(document.getElementById('trendChart'), {
+    type: 'line',
+    data: { labels, datasets: [mk('생성', created, cssVar('--s1')), mk('해결', resolved, cssVar('--s2'))] },
+    options: {
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        x: { ticks: { color: tickColor(), maxTicksLimit: 12, autoSkip: true }, grid: { display: false }, border: { color: gridColor() } },
+        y: { beginAtZero: true, ticks: { color: tickColor(), precision: 0 }, grid: { color: gridColor() }, border: { display: false } }
+      },
+      plugins: {
+        legend: { display: true, position: 'top', align: 'end',
+                  labels: { color: cssVar('--text-2'), boxWidth: 10, boxHeight: 10, usePointStyle: true, pointStyle: 'circle', padding: 16, font: { size: 12 } } },
+        tooltip: tooltipStyle()
+      }
+    }
+  });
+}
+
+function tooltipStyle() {
+  return {
+    backgroundColor: cssVar('--text'), titleColor: cssVar('--surface'), bodyColor: cssVar('--surface'),
+    padding: 10, cornerRadius: 8, displayColors: true, boxWidth: 8, boxHeight: 8, usePointStyle: true,
+    titleFont: { size: 12 }, bodyFont: { size: 12 }
+  };
+}
+
+function simpleTable(headers, rows) {
+  if (!rows.length) return '<p class="muted" style="font-size:12.5px;padding:12px">데이터가 없습니다.</p>';
+  return `<table><thead><tr>${headers.map((h, i) => `<th class="${i ? 'num' : ''}">${esc(h)}</th>`).join('')}</tr></thead>
+    <tbody>${rows.map(r => `<tr>${r.map((c, i) => `<td class="${i ? 'num' : ''}">${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+}
+
+/* 차트 ↔ 표 전환. Chart.js 를 불러오지 못한 환경(사내망 CDN 차단 등)에서는 표로 고정된다. */
+function switchView(target, view, force) {
+  const wrap = document.getElementById(target + '-chart-wrap');
+  const table = document.getElementById(target + '-table');
+  if (!wrap || !table) return;
+  const useTable = view === 'table' || (force && !hasChart());
+  wrap.classList.toggle('hidden', useTable);
+  table.classList.toggle('hidden', !useTable);
+  document.querySelectorAll(`.view-toggle button[data-target="${target}"]`).forEach(b => {
+    b.classList.toggle('on', b.dataset.view === (useTable ? 'table' : 'chart'));
+    if (force && !hasChart() && b.dataset.view === 'chart') b.disabled = true;
+  });
+}
+
+/* ══════════════════════════════════════════════════════════
+   워크로드
+   ══════════════════════════════════════════════════════════ */
+function renderWorkload(wl) {
+  const rows = wl.rows || [];
+  document.getElementById('wl-summary').innerHTML =
+    `<span>💡</span><span>${esc(wl.summary || '미해결 이슈가 없습니다.')}</span>`;
+
+  const legend = document.getElementById('wl-legend');
+  if (!rows.length) {
+    document.getElementById('wl-rows').innerHTML = '';
+    legend.innerHTML = '';
+    return;
+  }
+  const max = Math.max(...rows.map(r => r.load_score), 1);
+
+  // 막대 위의 세로선이 무엇인지 설명한다. 설명 없는 표식은 읽는 사람을 멈추게 한다.
+  legend.innerHTML = `
+    <span class="wl-legend-item">
+      <span class="wl-legend-line"></span>
+      과부하 기준선 <b>${wl.overload_line}</b> · 평균 부하 <b>${wl.avg_load}</b> 의 1.5배 —
+      막대가 이 선을 넘으면 과부하로 봅니다
+    </span>
+    <span class="wl-legend-item">부하 = 우선순위 가중 합 (긴급·즉시 5 · 높음 3 · 보통 2 · 낮음 1)</span>`;
+  const VERDICT = {
+    '과부하':   ['badge-critical', '⛔', 'over'],
+    '지연위험': ['badge-serious', '⚠️', 'risk'],
+    '여유':     ['badge-good', '✅', 'easy'],
+    '정상':     ['chip', '·', 'normal']
+  };
+  const linePct = Math.min(wl.overload_line / max * 100, 100);
+
+  document.getElementById('wl-rows').innerHTML = rows.map(r => {
+    const [cls, icon, tone] = VERDICT[r.verdict] || VERDICT['정상'];
+    // 값이 아주 작아도 색이 보이도록 최소 폭을 둔다.
+    const width = Math.max(Math.round(r.load_score / max * 100), 6);
+    return `<div class="wl-row">
+      <span class="wl-name" title="${esc(r.assignee)}">${esc(r.assignee)}</span>
+      <span class="wl-track">
+        <span class="wl-fill ${tone}" style="width:${width}%"></span>
+        <span class="wl-line" style="left:${linePct}%"
+              title="과부하 기준선 (부하 ${wl.overload_line} · 평균 ${wl.avg_load})"></span>
+      </span>
+      <span class="wl-meta">
+        <span class="wl-num">${r.open}건 · 부하 ${r.load_score}</span>
+        ${r.aging ? `<span class="badge badge-warn" title="${LONG_TERM_DAYS}일 넘게 미해결인 이슈 ${r.aging}건">🕗 ${r.aging}</span>` : ''}
+        <span class="badge ${cls}">${icon} ${esc(r.verdict)}</span>
+      </span>
+    </div>`;
+  }).join('');
+}
+
+/* ══════════════════════════════════════════════════════════
+   담당자 표
+   ══════════════════════════════════════════════════════════ */
+function renderTable() {
+  const cols = ['name', 'total', 'new_', 'prog', 'res', 'qa', 'days'];
+  const sorted = [..._assigneeData].sort((a, b) => {
+    const av = a[cols[sortCol]], bv = b[cols[sortCol]];
+    if (av === '-' && bv !== '-') return 1;
+    if (bv === '-' && av !== '-') return -1;
+    const r = typeof av === 'string' ? av.localeCompare(bv, 'ko') : (av - bv);
+    return sortAsc ? r : -r;
+  });
+  document.getElementById('assignee-tbody').innerHTML = sorted.map(r => `
+    <tr>
+      <td class="name">${esc(r.name)}</td>
+      <td class="num"><b>${r.total}</b></td>
+      <td class="num">${chip(r.new_, 'chip-indigo')}</td>
+      <td class="num">${chip(r.prog, 'chip-amber')}</td>
+      <td class="num">${chip(r.res,  'chip-green')}</td>
+      <td class="num">${chip(r.qa,   'chip-blue')}</td>
+      <td class="num muted">${r.days === '-' ? '-' : r.days + '일'}</td>
+    </tr>`).join('');
+}
+function chip(n, cls) {
+  return n === 0 ? '<span class="chip chip-zero">0</span>' : `<span class="chip ${cls}">${n}</span>`;
+}
+function sortTable(col) {
+  if (sortCol === col) sortAsc = !sortAsc; else { sortCol = col; sortAsc = false; }
+  document.querySelectorAll('#assignee-table thead th').forEach((th, i) => {
+    th.classList.toggle('sorted', i === col);
+    th.querySelector('.si').textContent = i === col ? (sortAsc ? '↑' : '↓') : '↕';
+  });
+  renderTable();
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,1909 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>테스트케이스 생성기 · Redmine QA</title>
+<script>
+  // 첫 페인트 전에 테마를 적용해 화면이 번쩍이지 않게 한다.
+  try {
+    var t = localStorage.getItem('tc_theme');
+    if (t) document.documentElement.setAttribute('data-theme', t);
+  } catch (e) {}
+</script>
+<link rel="stylesheet" href="{{ static_url('css/base.css') }}">
+<link rel="stylesheet" href="{{ static_url('css/testcases.css') }}">
+</head>
+<body>
+<div id="toast" role="status" aria-live="polite"></div>
+
+<header class="appbar">
+  <div class="appbar-in">
+    <div class="brand"><span class="brand-mark">Q</span><span>Redmine</span> <b>QA</b></div>
+    <nav class="appnav">
+      <a href="/" class="appnav-tab">📊 리포트</a>
+      <a href="/testcases" class="appnav-tab active">🧪 테스트케이스</a>
+    </nav>
+    <div class="appbar-right">
+      <button class="theme-toggle" onclick="toggleTheme()" title="밝은 화면 / 어두운 화면 전환">
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+        <span id="theme-label">라이트 모드</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <header class="page-head">
+    <h1>테스트케이스 생성기</h1>
+    <p class="sub">Redmine 이슈나 기획서를 분석해 <b>우선순위 · 기능분류 · 유형 · 목적 · 사전조건 · 절차 · 기대결과</b> 표로 만들고,
+      수행 결과(P/F)를 기록해 실패한 케이스를 그대로 결함으로 등록합니다.</p>
+  </header>
+
+  <!-- ── 1. 이슈로 만들기 ───────────────────────────── -->
+  <section class="controls" aria-label="이슈 조회 조건">
+    <label for="project-id">프로젝트</label>
+    <input type="text" id="project-id" class="dt-input" style="width:140px" value="{{ default_project }}"
+           placeholder="프로젝트 ID" title="비우면 기본 프로젝트. 리포트 화면과 값을 공유합니다.">
+
+    <label>조회 기준</label>
+    <span class="cal-wrap" id="calwrap">
+      <input type="text" id="from" class="dt-input" style="width:126px" placeholder="2026-07-01"
+             inputmode="numeric" maxlength="10" autocomplete="off">
+      <span class="tilde">~</span>
+      <input type="text" id="to" class="dt-input" style="width:126px" placeholder="2026-07-07"
+             inputmode="numeric" maxlength="10" autocomplete="off">
+      <div class="cal-pop" id="calpop"></div>
+    </span>
+
+    <span class="ver-or" title="기간과 목표 버전을 함께 지정하면 둘 다 만족하는 이슈(교집합)만 조회합니다.">그리고</span>
+    <select id="version-sel" class="dt-input ver-sel"
+            title="목표 버전으로 조회. 기간과 함께 쓰면 교집합, 기간을 비우면 그 버전 전체.">
+      <option value="">목표 버전(릴리스)…</option>
+    </select>
+
+    <label>생성 목적</label>
+    <span class="purpose-group" id="purpose-group" role="radiogroup" aria-label="생성 목적">
+      <label class="purpose-opt" title="문서·이슈의 요구사항을 빠짐없이 덮습니다. 기획 리뷰·최초 QA 용">
+        <input type="radio" name="purpose" value="full" checked> 전체 검증
+      </label>
+      <label class="purpose-opt" title="사람이 검수하지 않고 그대로 돌릴 수 있는 케이스만 만듭니다. 자동 회귀 용">
+        <input type="radio" name="purpose" value="core"> 핵심 흐름
+      </label>
+    </span>
+
+    <button id="run-full" aria-pressed="true"
+            title="선택한 이슈로 테스트케이스를 만듭니다 (기획서 생성도 이 선택을 따릅니다)">🧪 테스트케이스</button>
+    <button id="run-check" class="alt" aria-pressed="false"
+            title="선택한 이슈로 체크리스트를 만듭니다 (기획서 생성도 이 선택을 따릅니다)">✅ 체크리스트</button>
+    <button id="refresh" class="ghost" disabled title="기존과 겹치지 않는 새 항목만 추가로 생성합니다">➕ 더 생성</button>
+  </section>
+
+  <p class="hint-line" id="purpose-hint"></p>
+
+  <!-- ── 2. 기획서로 만들기 (개발 전 미리 작성) ─────── -->
+  <details class="spec-box" id="spec-box">
+    <summary>📄 기획서로 만들기 <span class="guide-state">이슈가 없어도, 개발 전에 미리</span></summary>
+    <div class="spec-body">
+      <p class="guide-help">기획서·요구사항 문서를 붙여넣으면 그 내용으로 테스트케이스를 만듭니다.
+        아직 구현 전이므로 <b>요구사항을 만족하는지</b>와 <b>문서가 빠뜨린 예외 상황</b>을 중심으로 작성됩니다.</p>
+      <div class="spec-attach" id="spec-attach">
+        <button class="ghost btn-sm" id="attach-pick" type="button"
+                title="PDF · 워드 · 텍스트 · 이미지 파일을 읽어 아래 칸에 채웁니다">📎 파일 첨부</button>
+        <input type="file" id="attach-input" multiple hidden
+               accept=".pdf,.docx,.txt,.md,.markdown,.csv,.tsv,.json,.log,.yml,.yaml,.html,.htm,.png,.jpg,.jpeg,.webp,.gif">
+        <input type="text" id="figma-url" class="dt-input" style="flex:1;min-width:190px"
+               placeholder="Figma 주소 붙여넣기 (figma.com/design/…)">
+        <button class="ghost btn-sm" id="figma-load" type="button">🎨 Figma 읽기</button>
+        <span class="hint">PDF · 워드 · 텍스트 · 이미지 · Figma — 끌어다 놓아도 됩니다</span>
+        <div class="attach-list" id="attach-list"></div>
+      </div>
+
+      <div class="spec-row">
+        <input type="text" id="spec-title" class="dt-input" placeholder="문서 제목 (예: 로그인 개편 기획서)">
+        <button id="spec-run">🧪 이 문서로 생성</button>
+        <button id="spec-clear" class="ghost">지우기</button>
+      </div>
+      <textarea id="spec-text" rows="9" placeholder="여기에 기획서 내용을 붙여넣으세요.
+
+예)
+[로그인 개편]
+- 이메일 또는 휴대폰 번호로 로그인할 수 있다.
+- 비밀번호 5회 실패 시 10분간 잠금.
+- 소셜 로그인(네이버/카카오)을 지원한다."></textarea>
+      <div class="spec-actions">
+        <span class="guide-help" style="margin:0">체크리스트로 만들려면 위의 <b>✅ 체크리스트</b>를 먼저 눌러 모드를 바꾸세요.
+          <b>생성 목적</b>도 위 조회 바에서 고른 값을 함께 사용합니다.</span>
+        <span class="spec-count" id="spec-count">0자</span>
+      </div>
+    </div>
+  </details>
+
+  <!-- ── 3. 프로젝트 생성 지침 ───────────────────────── -->
+  <details id="guide-box" class="guide-box">
+    <summary>⚙️ 이 프로젝트 추가 규칙 <span id="guide-state" class="guide-state"></span></summary>
+    <div class="guide-body">
+      <p class="guide-help"><b>표 양식과 공통 품질 기준은 모든 프로젝트에 고정 적용됩니다.</b>
+        (테스트 설계 기법 · 우선순위 정의 · depth 규칙 · 작성 품질 · 개수와 유형 배분)
+        여기에는 <b id="guide-proj">현재 프로젝트</b> 에만 해당하는 규칙을 적으세요 — 공통 기준을 덮어쓰지 않고 <b>덧붙습니다.</b>
+        비워두면 공통 기준만 적용됩니다. <code>#</code> 로 시작하는 줄은 메모로 취급되어 생성에 쓰이지 않습니다.
+        서버에 저장되어 팀원 PC 에서도 똑같이 적용됩니다.</p>
+      <textarea id="guide-text" rows="8" placeholder="이 프로젝트라서 다른 점만 적으세요. 예)
+
+· 소셜 로그인은 네이버·카카오·애플을 각각 별도 케이스로 만든다
+· 태블릿 전용 서비스이므로 가로/세로 회전 케이스를 포함한다
+· 결제·환불 관련 케이스는 무조건 P0 으로 둔다
+· depth1 은 [회원 / 학습 / 결제 / 설정] 중에서만 고른다"></textarea>
+      <div class="guide-actions">
+        <button id="guide-save">💾 이 프로젝트 규칙 저장</button>
+        <button id="guide-default" class="ghost" title="예시 템플릿을 입력칸에 넣습니다(저장 전까지 적용 안 됨)">예시 템플릿 넣기</button>
+        <button id="guide-reload" class="ghost">↺ 되돌리기</button>
+        <span id="guide-msg" class="guide-msg"></span>
+      </div>
+    </div>
+  </details>
+
+  <p class="hint-line">💡 셀을 <b>더블클릭</b>하면 수정, 각 행의 🗑 로 행 삭제, 카드 우측 × 로 이슈 전체 삭제.
+    편집·체크는 자동 저장됩니다. 진행 모드에서는 <b>키보드 단축키</b>로 결과를 빠르게 입력할 수 있습니다
+    (<kbd>?</kbd> 를 누르면 도움말).</p>
+
+  <!-- ── 4. 원본 / 진행 기록 ─────────────────────────── -->
+  <div class="workbar">
+    <div class="lib-bar" id="lib-bar">
+      <div class="lib-group">
+        <span class="lib-label">📁 원본</span>
+        <select id="master-load" class="dt-input"><option value="">— 저장된 원본 —</option></select>
+        <button class="ghost" id="master-open" title="저장된 원본을 불러와 보기/편집">열기</button>
+        <button class="ghost" id="master-save" title="지금 만든 테스트케이스를 원본으로 저장">💾 원본으로 저장</button>
+        <button class="ghost" id="rev-open" title="이 원본이 그동안 어떻게 바뀌었는지 비교">🕘 변경 이력</button>
+      </div>
+      <span class="lib-div"></span>
+      <div class="lib-group">
+        <span class="lib-label">▶ 테스트 진행</span>
+        <input type="text" id="tester-name" class="dt-input" placeholder="테스터" title="진행 기록에 남길 이름">
+        <button id="run-start" title="선택한 원본을 복제해 새 회차를 시작합니다">진행 시작</button>
+      </div>
+      <span class="lib-div"></span>
+      <div class="lib-group">
+        <span class="lib-label">🧾 진행 기록</span>
+        <select id="run-load" class="dt-input"><option value="">— 저장된 진행 기록 —</option></select>
+        <button class="ghost" id="run-open" title="저장된 진행 기록을 이어서 열기">열기</button>
+        <button class="ghost" id="run-save" title="현재 진행 기록 저장" hidden>💾 진행 기록 저장</button>
+        <button class="ghost danger" id="set-delete" title="선택한 원본 또는 진행 기록 삭제">🗑</button>
+      </div>
+      <span class="lib-state" id="lib-state">새로 생성 (미저장)</span>
+    </div>
+
+    <div class="run-summary" id="run-summary" hidden></div>
+  </div>
+
+  <div class="progbar-wrap" id="progwrap">
+    <div class="progbar"><i id="progfill"></i></div>
+    <div class="prog-label" id="proglabel"></div>
+    <button id="prog-cancel" class="cancel-btn" hidden>⛔ 생성 취소</button>
+  </div>
+
+  <p id="status"></p>
+
+  <div id="selpanel"></div>
+
+  <div id="exportbar">
+    <button class="ghost" id="exp-html">⬇ HTML</button>
+    <button class="ghost" id="exp-csv">⬇ CSV</button>
+    <button class="ghost" id="exp-xlsx">⬇ 엑셀(xlsx)</button>
+    <button class="ghost" id="show-coverage">📊 커버리지</button>
+    <button class="ghost" id="show-keys" title="키보드 단축키 보기">⌨ 단축키</button>
+  </div>
+
+  <div id="out"><div class="empty">기간이나 목표 버전을 고르고 <b>테스트케이스</b> 또는 <b>체크리스트</b>를 누르세요.<br>
+    이슈가 아직 없다면 <b>📄 기획서로 만들기</b>를 써도 됩니다.</div></div>
+</div>
+
+<div class="modal" id="cov-modal" hidden>
+  <div class="modal-box" style="width:min(880px,100%)">
+    <h3>📊 커버리지 요약</h3>
+    <p class="modal-help">이슈별 케이스 수와 우선순위·유형 분포입니다. 케이스가 0건인 이슈는 빨갛게 표시됩니다.</p>
+    <div id="cov-body"></div>
+    <div class="modal-actions"><button id="cov-close" class="ghost">닫기</button></div>
+  </div>
+</div>
+
+<div class="modal" id="bug-modal" hidden>
+  <div class="modal-box">
+    <h3>🐞 Redmine 결함 등록</h3>
+    <p class="modal-help">실패한 케이스로 Redmine 에 <b id="bug-tracker-name">결함</b> 이슈를 만듭니다. 내용을 확인·수정한 뒤 등록하세요.</p>
+    <label for="bug-subject">제목</label>
+    <input type="text" id="bug-subject" class="dt-input" style="width:100%">
+    <label for="bug-desc">설명</label>
+    <textarea id="bug-desc" rows="12" style="width:100%"></textarea>
+    <div class="modal-actions">
+      <button id="bug-submit">🐞 결함 등록</button>
+      <button id="bug-cancel" class="ghost">취소</button>
+      <span id="bug-msg" class="guide-msg"></span>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="rev-modal" hidden>
+  <div class="modal-box" style="width:min(920px,100%)">
+    <h3>🕘 테스트케이스 변경 이력</h3>
+    <p class="modal-help">원본을 저장할 때마다 직전 상태가 자동으로 보관됩니다.
+      이슈가 수정되어 케이스를 다시 만들었을 때 무엇이 <b>추가·삭제·변경</b>됐는지 비교하세요.</p>
+    <div id="rev-body"></div>
+    <div class="modal-actions"><button id="rev-close" class="ghost">닫기</button></div>
+  </div>
+</div>
+
+<div class="modal" id="keys-modal" hidden>
+  <div class="modal-box">
+    <h3>⌨ 키보드 단축키</h3>
+    <p class="modal-help">진행 모드에서 결과를 빠르게 입력할 때 씁니다. 입력칸에 커서가 있을 때는 동작하지 않습니다.</p>
+    <div class="kb-list">
+      <div class="kb-item"><span class="kd"><kbd>J</kbd><kbd>↓</kbd></span><span>다음 항목</span></div>
+      <div class="kb-item"><span class="kd"><kbd>K</kbd><kbd>↑</kbd></span><span>이전 항목</span></div>
+      <div class="kb-item"><span class="kd"><kbd>P</kbd><kbd>1</kbd></span><span>Pass</span></div>
+      <div class="kb-item"><span class="kd"><kbd>F</kbd><kbd>2</kbd></span><span>Fail</span></div>
+      <div class="kb-item"><span class="kd"><kbd>B</kbd><kbd>3</kbd></span><span>Blocked</span></div>
+      <div class="kb-item"><span class="kd"><kbd>N</kbd><kbd>4</kbd></span><span>N/A</span></div>
+      <div class="kb-item"><span class="kd"><kbd>0</kbd></span><span>미시행으로 되돌리기</span></div>
+      <div class="kb-item"><span class="kd"><kbd>Space</kbd></span><span>완료 체크 토글</span></div>
+      <div class="kb-item"><span class="kd"><kbd>D</kbd></span><span>결함 등록 창 열기</span></div>
+      <div class="kb-item"><span class="kd"><kbd>?</kbd></span><span>이 도움말</span></div>
+      <div class="kb-item"><span class="kd"><kbd>Esc</kbd></span><span>선택 해제 · 창 닫기</span></div>
+    </div>
+    <div class="modal-actions"><button id="keys-close" class="ghost">닫기</button></div>
+  </div>
+</div>
+
+<script>
+// ── 테마 토글 (대시보드와 localStorage 'tc_theme' 공유) ──
+function toggleTheme(){
+  const html = document.documentElement;
+  const next = html.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+  html.setAttribute('data-theme', next);
+  try { localStorage.setItem('tc_theme', next); } catch(e){}
+  const lbl = document.getElementById('theme-label');
+  if (lbl) lbl.textContent = next === 'light' ? '다크 모드' : '라이트 모드';
+}
+document.addEventListener('DOMContentLoaded', () => {
+  const cur = document.documentElement.getAttribute('data-theme');
+  const lbl = document.getElementById('theme-label');
+  if (lbl) lbl.textContent = cur === 'light' ? '다크 모드' : '라이트 모드';
+});
+const $ = s => document.querySelector(s);
+const fromEl = $("#from"), toEl = $("#to"), statusEl = $("#status"), outEl = $("#out");
+const runFullBtn = $("#run-full"), runCheckBtn = $("#run-check"), refreshBtn = $("#refresh");
+const progwrap = $("#progwrap"), progfill = $("#progfill"), proglabel = $("#proglabel");
+const progCancelBtn = $("#prog-cancel");
+const exportbar = $("#exportbar"), expHtmlBtn = $("#exp-html"), expCsvBtn = $("#exp-csv");
+const calwrap = $("#calwrap"), calpop = $("#calpop");
+const projectEl = $("#project-id"), selpanel = $("#selpanel");
+function getProject(){ return (projectEl.value || "").trim(); }
+
+/* ── 생성 목적 — 전체 검증(full) / 핵심 흐름(core) ──────────────
+   core 는 '사람이 검수하지 않고 그대로 수행'을 전제로, 근거가 확실한 케이스만 만든다. */
+function getPurpose(){
+  const picked = document.querySelector('input[name="purpose"]:checked');
+  return picked && picked.value === "core" ? "core" : "full";
+}
+const PURPOSE_HINT = {
+  full: "\u{1F50D} <b>전체 검증</b> — 문서·이슈의 요구사항을 빠짐없이 덮습니다. " +
+        "근거가 없는 확인 케이스도 포함되므로 <b>기획 리뷰·최초 QA</b> 에 쓰세요.",
+  core: "\u26A1 <b>핵심 흐름</b> — 원문에 근거가 확실한 케이스만 만듭니다. " +
+        "추측 케이스를 아예 만들지 않아 <b>사람 검수 없이 그대로 수행</b>할 수 있습니다."
+};
+function refreshPurposeHint(){
+  const el = $("#purpose-hint");
+  if (el) el.innerHTML = PURPOSE_HINT[getPurpose()];
+}
+document.querySelectorAll('input[name="purpose"]').forEach(radio => {
+  radio.addEventListener("change", () => {
+    refreshPurposeHint();
+    try { localStorage.setItem("tc_purpose", getPurpose()); } catch(e){}
+  });
+});
+(function restorePurpose(){
+  let saved = null;
+  try { saved = localStorage.getItem("tc_purpose"); } catch(e){}
+  if (saved){
+    const target = document.querySelector(`input[name="purpose"][value="${saved}"]`);
+    if (target) target.checked = true;
+  }
+  refreshPurposeHint();
+})();
+
+// ── 프로젝트별 생성 지침 ───────────────────────────────
+const guideText = $("#guide-text"), guideMsg = $("#guide-msg"), guideState = $("#guide-state");
+let guideLoadedProj = null, guideSaved = "", guideDefault = "", guideIsCustom = false;
+function setGuideMsg(t, cls){ guideMsg.className = "guide-msg" + (cls ? " " + cls : ""); guideMsg.textContent = t || ""; }
+function refreshGuideState(){
+  guideState.textContent = guideIsCustom ? "· 이 프로젝트 전용 지침 사용 중" : "· 기본 지침 사용 중";
+  const gp = $("#guide-proj"); if (gp) gp.textContent = getProject() ? `프로젝트 "${getProject()}"` : "기본 프로젝트";
+}
+async function loadGuide(){
+  const proj = getProject();
+  guideLoadedProj = proj;
+  setGuideMsg("불러오는 중…");
+  try {
+    const res = await fetch(`/api/project_prompt?project_id=${encodeURIComponent(proj)}`);
+    const data = await res.json();
+    guideSaved   = data.prompt || "";
+    guideDefault = data.default_prompt || "";
+    guideIsCustom = !!data.is_custom;
+    // 전용 지침이 있으면 그걸, 없으면 기본 지침을 편집 시드로 표시
+    guideText.value = guideIsCustom ? guideSaved : guideDefault;
+    setGuideMsg(guideIsCustom ? "" : "기본 지침을 표시 중입니다. 수정 후 저장하면 이 프로젝트 전용으로 저장됩니다.");
+  } catch (e){ setGuideMsg("지침을 불러오지 못했습니다: " + e.message, "err"); }
+  refreshGuideState();
+}
+async function saveGuide(){
+  const proj = getProject();
+  setGuideMsg("저장 중…");
+  try {
+    const res = await fetch("/api/project_prompt", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ project_id: proj, prompt: guideText.value }),
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    guideSaved = data.prompt || "";
+    guideIsCustom = (guideSaved.trim().length > 0);
+    guideText.value = guideIsCustom ? guideSaved : guideDefault;
+    const who = proj ? `"${proj}"` : "기본 프로젝트";
+    setGuideMsg(guideIsCustom
+      ? `저장됨 · 다음 생성부터 ${who} 전용 지침이 적용됩니다`
+      : `전용 지침을 비웠습니다 · ${who}는 다시 기본 지침을 사용합니다`, "ok");
+  } catch (e){ setGuideMsg("저장 실패: " + e.message, "err"); }
+  refreshGuideState();
+}
+let lastMode = "full";
+
+/* ── 산출물 선택 상태 ────────────────────────────────────
+   지금 무엇을 만들지(테스트케이스 / 체크리스트)를 버튼 모양에 그대로 드러낸다.
+   기획서 생성도 이 선택을 따르기 때문에, 상태가 보이지 않으면
+   사용자가 의도하지 않은 산출물이 만들어진다. lastMode 는 항상 이 함수로만 바꾼다. */
+function setMode(mode){
+  lastMode = mode === "checklist" ? "checklist" : "full";
+  const check = lastMode === "checklist";
+  runFullBtn.classList.toggle("alt", check);
+  runCheckBtn.classList.toggle("alt", !check);
+  runFullBtn.setAttribute("aria-pressed", String(!check));
+  runCheckBtn.setAttribute("aria-pressed", String(check));
+  refreshBtn.textContent = `➕ 더 생성 (${check ? "체크리스트" : "테스트케이스"})`;
+}
+let currentCases = [], currentMeta = {};
+// 세트(원본/실행) 상태
+let currentKind = "fresh";     // fresh | master | run
+let currentSetId = null;       // 불러온/저장된 세트 id
+let currentSetName = "";
+let currentMasterRef = { id: "", name: "" };
+let runSaveTimer = null;       // 실행 자동저장 디바운스
+const EXEC_LABELS = { "": "미시행", pass: "Pass", fail: "Fail", na: "N/A", blocked: "Blocked" };
+let pendingIssues = [], pendingMode = "full", pendingMeta = {};
+// 선택 상태(페이지 이동에도 유지) — 이슈 id 문자열 Set + 페이지 상태
+let selIds = new Set(), selPage = 0, genWarn = 20;
+let selTrackers = new Set();   // 목록에 표시할 이슈 유형(트래커) 필터
+let selPageSize = Number(localStorage.getItem("tc_sel_pagesize")) || 20;
+if (![10,20,30].includes(selPageSize)) selPageSize = 20;
+// 생성 취소 제어
+let genController = null, genCancelled = false;
+const NO_TRACKER = "(유형없음)";
+const CAT_CLASS = { "기본":"basic", "엣지":"edge", "중요":"crit" };
+
+// ── 작업 내용 저장(localStorage) : 편집/삭제/체크 유지 ──
+const WS_KEY = "tc_workset_v2";
+function saveWorkset(){ try { localStorage.setItem(WS_KEY, JSON.stringify({ meta: currentMeta, cases: currentCases })); } catch(e){} }
+function loadWorkset(){ try { return JSON.parse(localStorage.getItem(WS_KEY) || "null"); } catch(e){ return null; } }
+function findCase(issue){ return currentCases.find(c => String(c.id) === String(issue)); }
+
+function esc(s){
+  return String(s ?? "").replace(/[&<>"]/g, c =>
+    ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+}
+function normDate(s){
+  const m = String(s || "").trim().match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$/);
+  if (!m) return null;
+  const iso = `${m[1]}-${String(+m[2]).padStart(2,"0")}-${String(+m[3]).padStart(2,"0")}`;
+  return isNaN(new Date(iso).getTime()) ? null : iso;
+}
+
+// ── 렌더링 ────────────────────────────────────────────
+function headHtml(c){
+  return `<div class="card-head">
+    <span class="iss-id">#${esc(c.id)}</span>
+    <span class="iss-title">${esc(c.subject)}</span>
+    ${c.tracker ? `<span class="tag">${esc(c.tracker)}</span>` : ""}
+    ${c.priority ? `<span class="tag">${esc(c.priority)}</span>` : ""}
+    ${c.status ? `<span class="tag">${esc(c.status)}</span>` : ""}
+    <button class="card-del" title="이 이슈 카드 삭제" data-del-card="${esc(c.id)}">×</button>
+  </div>`;
+}
+function progHtml(done, total, rows){
+  const need = reviewCount(rows);
+  const known = rows && rows.length && evState(rows[0]) !== "legacy";
+  const badge = need
+    ? `<span class="badge badge-warn" title="원문에 근거가 없어 사람 확인이 필요한 항목입니다">⚠ 검수 필요 ${need}</span>`
+    : (known ? `<span class="badge badge-good" title="모든 항목이 원문에 근거합니다. 검수 없이 수행할 수 있습니다.">✅ 전부 근거 있음</span>` : "");
+  return `<div class="prog">체크 <b class="pc">${done}</b> / ${total} ${badge}</div>`;
+}
+/* ── 근거(evidence) — 무검수로 돌려도 되는지 가르는 신호 ────────
+     문자열 있음 → 원문 인용 (그대로 수행 가능)
+     빈 문자열   → 근거 없음 (사람 검수 필요)
+     undefined   → 이 필드가 없던 시절 세트 (판정 보류) */
+function evState(row){
+  if (!row || row.evidence === undefined) return "legacy";
+  return String(row.evidence).trim() ? "ok" : "none";
+}
+function evHtml(row){
+  const st = evState(row);
+  if (st === "legacy") return `<span class="ev-legacy" title="이 필드가 없던 시절에 만든 항목입니다">–</span>`;
+  if (st === "none") return `<span class="ev-none" title="원문에 근거가 없어 AI가 판단한 항목입니다. 사람이 확인하세요.">⚠ 근거 없음</span>`;
+  const text = String(row.evidence).trim();
+  return `<span class="ev-ok" title="${esc(text)}">${esc(text)}</span>`;
+}
+function reviewCount(rows){
+  return (rows || []).filter(r => evState(r) === "none").length;
+}
+
+function priCls(p){ p = String(p || "").toUpperCase(); return p === "P0" ? "p0" : p === "P1" ? "p1" : p === "P2" ? "p2" : ""; }
+function isRun(){ return currentKind === "run"; }
+function execSelect(status){
+  const s = status || "";
+  const opts = Object.keys(EXEC_LABELS).map(k =>
+    `<option value="${k}"${k === s ? " selected" : ""}>${EXEC_LABELS[k]}</option>`).join("");
+  return `<select class="exec st-${s || "none"}">${opts}</select>`;
+}
+function execCell(row){
+  const link = row.defect
+    ? `<a class="defect-link" href="${esc(row.defect.url)}" target="_blank" title="등록된 결함">🔗#${esc(row.defect.id)}</a>` : "";
+  return `${execSelect(row.status)}<button type="button" class="bug-btn" title="이 케이스로 Redmine 결함 등록">🐞</button>${link}`;
+}
+
+// 테스트케이스 표
+function renderTable(cases, issueId){
+  if (!cases.length) return `<div class="none">도출된 항목 없음</div>`;
+  const run = isRun();
+  const ed  = (f, v, cls) => `<td class="editable ${cls || ""}" data-f="${f}">${esc(v || "")}</td>`;
+  const rows = cases.map((x, idx) => `
+    <tr data-issue="${esc(issueId)}" data-idx="${idx}" data-kind="tc">
+      <td class="c-chk"><input type="checkbox" class="chk"${x.done ? " checked" : ""}></td>
+      ${run ? `<td class="c-exec">${execCell(x)}</td>` : ""}
+      <td class="c-no">${idx + 1}</td>
+      <td><span class="pri ${priCls(x.priority)} editable" data-f="priority">${esc(x.priority || "")}</span></td>
+      ${ed("depth1", x.depth1, "dep")}${ed("depth2", x.depth2, "dep")}${ed("depth3", x.depth3, "dep")}${ed("depth4", x.depth4, "dep")}
+      ${ed("type", x.type)}
+      ${ed("objective", x.objective)}
+      ${ed("precondition", x.precondition)}
+      <td class="editable pre" data-f="procedure">${esc(x.procedure || "")}</td>
+      <td class="editable pre" data-f="expected">${esc(x.expected || "")}</td>
+      <td class="c-ev">${evHtml(x)}</td>
+      ${run ? `<td class="editable pre c-actual" data-f="actual">${esc(x.actual || "")}</td>` : ""}
+      <td class="c-del"><button type="button" class="row-del" title="이 행 삭제">🗑</button></td>
+    </tr>`).join("");
+  return `<div class="tc-scroll"><table class="tc-table">
+    <thead><tr>
+      <th>완료</th>${run ? "<th>결과</th>" : ""}<th>No</th><th>우선순위</th>
+      <th>1Depth</th><th>2Depth</th><th>3Depth</th><th>4Depth</th>
+      <th>Type</th><th>테스트 목적</th><th>사전조건</th><th>테스트 절차</th><th>기대결과</th><th>근거</th>${run ? "<th>실제결과</th>" : ""}<th></th>
+    </tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
+// 체크리스트
+function renderChecklist(list, issueId){
+  if (!list.length) return `<div class="none">도출된 항목 없음</div>`;
+  const run = isRun();
+  return list.map((i, idx) => {
+    const cls = CAT_CLASS[i.category] || "";
+    return `
+    <div class="chk-row ${cls}${i.done ? " done" : ""}" data-issue="${esc(issueId)}" data-idx="${idx}" data-kind="cl">
+      <input type="checkbox" class="chk"${i.done ? " checked" : ""}>
+      ${i.category ? `<span class="cat editable" data-f="category">${esc(i.category)}</span>` : ""}
+      <span class="txt editable" data-f="text">${esc(i.text)}</span>
+      <span class="cl-ev">${evHtml(i)}</span>
+      ${run ? execCell(i) : ""}
+      <button type="button" class="row-del" title="이 항목 삭제">🗑</button>
+    </div>`;
+  }).join("");
+}
+
+function renderCase(c){
+  const r = c.result || {};
+  const head = headHtml(c);
+  if (r.error){
+    return `<div class="card" data-id="${esc(c.id)}">${head}<div class="err-box">⚠ ${esc(r.error)}</div></div>`;
+  }
+  if (Array.isArray(r.checklist)){
+    const total = r.checklist.length, done = r.checklist.filter(i => i.done).length;
+    return `<div class="card" data-id="${esc(c.id)}">${head}
+      ${r.summary ? `<div class="summary">${esc(r.summary)}</div>` : ""}
+      ${progHtml(done, total, r.checklist)}
+      ${renderChecklist(r.checklist, c.id)}</div>`;
+  }
+  const cases = r.cases || [];
+  const done = cases.filter(x => x.done).length;
+  return `<div class="card" data-id="${esc(c.id)}">${head}
+    ${r.summary ? `<div class="summary">${esc(r.summary)}</div>` : ""}
+    ${progHtml(done, cases.length, cases)}
+    ${renderTable(cases, c.id)}</div>`;
+}
+function replaceCard(c){
+  const node = outEl.querySelector(`.card[data-id="${c.id}"]`);
+  if (node) node.outerHTML = renderCase(c);
+}
+
+// ── 생성 (이슈별 순차 + 진행률) ────────────────────────
+function setBusy(b){ runFullBtn.disabled = runCheckBtn.disabled = refreshBtn.disabled = b; }
+function showProgress(pct, text){ progwrap.classList.add("show"); progfill.style.width = pct + "%"; proglabel.textContent = `${pct}%  ·  ${text}`; }
+function hideProgress(){ progwrap.classList.remove("show"); progfill.style.width = "0%"; }
+// ── 생성 취소 제어 ─────────────────────────────────────
+function beginGen(){ genCancelled = false; genController = new AbortController(); progCancelBtn.hidden = false; progCancelBtn.disabled = false; progCancelBtn.textContent = "⛔ 생성 취소"; }
+function endGen(){ progCancelBtn.hidden = true; genController = null; }
+function cancelGen(){ genCancelled = true; progCancelBtn.disabled = true; progCancelBtn.textContent = "취소 중…"; if (genController) genController.abort(); }
+progCancelBtn.addEventListener("click", cancelGen);
+
+// ── 1단계: 이슈 목록 조회(기간·목표 버전 AND) 후 '선택 패널' 표시 ────
+async function startSelection(mode){
+  setMode(mode);
+  const project = getProject();
+  localStorage.setItem("tc_project", project);
+  const pp = project ? `&project_id=${encodeURIComponent(project)}` : "";
+  const verSel = $("#version-sel");
+  const versionId = verSel.value || "";
+  const versionName = versionId ? (verSel.options[verSel.selectedIndex].text || "") : "";
+
+  // 기간 · 목표 버전을 'AND(둘 다 만족)'로 결합한다.
+  //  · 둘 다 지정 → 그 버전 & 기간 교집합 / 하나만 지정 → 그 조건만 / 둘 다 비움 → 안내
+  const fromRaw = (fromEl.value || "").trim(), toRaw = (toEl.value || "").trim();
+  const from = normDate(fromRaw), to = normDate(toRaw);
+  const dateTyped = !!(fromRaw || toRaw);
+  const hasRange = !!(from && to);
+  if (dateTyped && !hasRange){
+    statusEl.className = "err";
+    statusEl.textContent = "기간은 시작일·종료일을 모두 YYYY-MM-DD 형식으로 입력하세요.";
+    return;
+  }
+  if (!versionId && !hasRange){
+    statusEl.className = "err";
+    statusEl.textContent = "기간을 입력하거나 목표 버전을 선택하세요. (둘 다 지정하면 교집합으로 조회)";
+    return;
+  }
+
+  const qs = [];
+  if (hasRange){ fromEl.value = from; toEl.value = to; qs.push(`date_from=${encodeURIComponent(from)}`, `date_to=${encodeURIComponent(to)}`); }
+  if (versionId){ qs.push(`version_id=${encodeURIComponent(versionId)}`); }
+  const url = `/api/tc_issues?${qs.join("&")}${pp}`;
+  const meta = {
+    from: hasRange ? from : "", to: hasRange ? to : "",
+    version: versionId, versionName: versionId ? versionName : "",
+    mode, project,
+  };
+  const labels = [];
+  if (versionId) labels.push(`목표 버전 "${versionName}"`);
+  if (hasRange)  labels.push(from === to ? from : `${from} ~ ${to}`);
+  const scopeLabel = labels.join(" · ");
+
+  setBusy(true);
+  statusEl.className = ""; statusEl.textContent = "이슈 목록 조회 중…";
+  selpanel.innerHTML = ""; outEl.innerHTML = ""; exportbar.style.display = "none";
+  try {
+    const res = await fetch(url);
+    const list = await res.json();
+    if (list.error) throw new Error(list.error);
+    const issues = list.issues || [];
+    if (issues.length === 0){
+      statusEl.textContent = `${scopeLabel} 에 해당하는 이슈가 없습니다.`;
+      outEl.innerHTML = `<div class="empty">해당 조건에 이슈가 없습니다.</div>`;
+      return;
+    }
+    pendingIssues = issues; pendingMode = mode; pendingMeta = meta;
+    genWarn = Number(list.gen_warn) || 20;
+    statusEl.textContent = `${scopeLabel} · ${issues.length}건 조회됨. 생성할 이슈를 선택하세요.`;
+    renderSelection(issues, mode);
+  } catch (e){
+    statusEl.className = "err";
+    statusEl.textContent = "오류: " + e.message;
+  } finally {
+    setBusy(false);
+  }
+}
+async function populateVersions(){
+  try {
+    const res = await fetch(`/api/versions?project_id=${encodeURIComponent(getProject())}`);
+    const vs = (await res.json()).versions || [];
+    const sel = $("#version-sel"); const cur = sel.value;
+    sel.innerHTML = `<option value="">목표 버전(릴리스)…</option>`
+      + vs.map(v => `<option value="${esc(v.id)}">${esc(v.name)}${v.status && v.status !== "open" ? " ("+esc(v.status)+")" : ""}</option>`).join("");
+    if (cur) sel.value = cur;
+  } catch (e){ /* 조용히 무시 */ }
+}
+
+function renderSelection(issues, mode){
+  const label = mode === "checklist" ? "체크리스트" : "테스트케이스";
+  // 기본: 전체 선택. 페이지를 넘겨도 이 Set 이 선택을 기억한다.
+  selIds = new Set(issues.map(i => String(i.id)));
+  selTrackers = new Set(trackerList());   // 기본: 모든 유형 표시
+  selPage = 0;
+  selpanel.innerHTML = `<div class="sel-panel">
+    <div class="sel-filter" id="sel-filter"></div>
+    <div class="sel-head">
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer;">
+        <input type="checkbox" id="sel-all" style="width:16px;height:16px;accent-color:var(--indigo);"> 전체 선택</label>
+      <span class="cnt" id="sel-count"></span>
+      <span class="sel-size">페이지당
+        <select id="sel-size">
+          <option value="10">10개</option>
+          <option value="20">20개</option>
+          <option value="30">30개</option>
+        </select>
+      </span>
+      <button id="sel-go" style="margin-left:auto;">선택한 이슈로 ${label} 생성</button>
+    </div>
+    <div class="sel-list" id="sel-list"></div>
+    <div class="sel-pager" id="sel-pager"></div>
+  </div>`;
+  renderTrackerFilter();
+  const sizeSel = $("#sel-size");
+  sizeSel.value = String(selPageSize);
+  sizeSel.addEventListener("change", e => {
+    selPageSize = Number(e.target.value) || 20;
+    localStorage.setItem("tc_sel_pagesize", String(selPageSize));
+    selPage = 0;
+    renderSelPage();
+  });
+  // '전체 선택'은 (현재 유형 필터로) 표시 중인 이슈 전체를 켜고/끈다.
+  $("#sel-all").addEventListener("change", e => {
+    const shown = curIssues();
+    if (e.target.checked) shown.forEach(i => selIds.add(String(i.id)));
+    else shown.forEach(i => selIds.delete(String(i.id)));
+    renderSelPage();
+  });
+  $("#sel-go").addEventListener("click", runSelected);
+  renderSelPage();
+}
+
+// 이슈 유형(트래커) 목록 + 필터
+function trackerOf(i){ return i.tracker || NO_TRACKER; }
+function trackerList(){
+  const seen = [];
+  pendingIssues.forEach(i => { const t = trackerOf(i); if (!seen.includes(t)) seen.push(t); });
+  return seen;
+}
+function curIssues(){ return pendingIssues.filter(i => selTrackers.has(trackerOf(i))); }
+function renderTrackerFilter(){
+  const box = $("#sel-filter"); if (!box) return;
+  const types = trackerList();
+  if (types.length <= 1){ box.style.display = "none"; return; }   // 유형이 하나면 필터 숨김
+  const counts = {};
+  pendingIssues.forEach(i => { const t = trackerOf(i); counts[t] = (counts[t]||0)+1; });
+  const chips = types.map(t => {
+    const on = selTrackers.has(t);
+    return `<label class="flt-chip${on ? "" : " off"}">
+      <input type="checkbox" class="flt-chk" value="${esc(t)}"${on ? " checked" : ""}> ${esc(t)} (${counts[t]})</label>`;
+  }).join("");
+  box.innerHTML = `<span class="flt-label">유형</span>${chips}
+    <button type="button" class="flt-mini" id="flt-all">전체</button>
+    <button type="button" class="flt-mini" id="flt-none">해제</button>`;
+  box.querySelectorAll(".flt-chk").forEach(cb => cb.addEventListener("change", e => {
+    if (e.target.checked) selTrackers.add(e.target.value);
+    else selTrackers.delete(e.target.value);
+    selPage = 0; renderTrackerFilter(); renderSelPage();
+  }));
+  $("#flt-all").addEventListener("click", () => { selTrackers = new Set(types); selPage = 0; renderTrackerFilter(); renderSelPage(); });
+  $("#flt-none").addEventListener("click", () => { selTrackers = new Set(); selPage = 0; renderTrackerFilter(); renderSelPage(); });
+}
+
+function pageCount(){ return Math.max(1, Math.ceil(curIssues().length / selPageSize)); }
+
+function renderSelPage(){
+  const shown = curIssues();
+  const pc = pageCount();
+  if (selPage >= pc) selPage = pc - 1;
+  if (selPage < 0) selPage = 0;
+  const start = selPage * selPageSize;
+  const pageItems = shown.slice(start, start + selPageSize);
+  const list = $("#sel-list");
+  if (!shown.length){
+    list.innerHTML = `<div class="empty" style="padding:14px;">선택한 유형에 해당하는 이슈가 없습니다. 위에서 유형을 켜 주세요.</div>`;
+  } else {
+    list.innerHTML = pageItems.map(i => {
+      const on = selIds.has(String(i.id));
+      return `<label class="sel-row">
+        <input type="checkbox" class="sel-chk" value="${esc(i.id)}"${on ? " checked" : ""}>
+        <span class="sid">#${esc(i.id)}</span>
+        <span class="sel-title">${esc(i.subject)}</span>
+        ${i.tracker ? `<span class="stag">${esc(i.tracker)}</span>` : ""}
+        ${i.priority ? `<span class="stag">${esc(i.priority)}</span>` : ""}
+      </label>`;
+    }).join("");
+  }
+  list.querySelectorAll(".sel-chk").forEach(cb => cb.addEventListener("change", e => {
+    if (e.target.checked) selIds.add(e.target.value);
+    else selIds.delete(e.target.value);
+    updateSelCount();
+  }));
+  renderPager(pc);
+  updateSelCount();
+}
+
+function renderPager(pc){
+  const pager = $("#sel-pager");
+  const shownN = curIssues().length;
+  const totalN = pendingIssues.length;
+  const scope = shownN === totalN ? `전체 ${totalN}건` : `표시 ${shownN}건 / 전체 ${totalN}건`;
+  if (pc <= 1){
+    pager.innerHTML = `<span class="pg-info">${scope}</span>`;
+    return;
+  }
+  // 현재 페이지 주변 번호만 노출(최대 7개)
+  let nums = [];
+  const win = 3;
+  let lo = Math.max(0, selPage - win), hi = Math.min(pc - 1, selPage + win);
+  for (let p = lo; p <= hi; p++) nums.push(p);
+  const btn = (label, page, opts = {}) =>
+    `<button data-pg="${page}"${opts.disabled ? " disabled" : ""}${opts.on ? ' class="on"' : ""}>${label}</button>`;
+  let html = btn("‹", selPage - 1, { disabled: selPage === 0 });
+  if (lo > 0){ html += btn("1", 0); if (lo > 1) html += `<span style="color:var(--text-sub)">…</span>`; }
+  nums.forEach(p => { html += btn(String(p + 1), p, { on: p === selPage }); });
+  if (hi < pc - 1){ if (hi < pc - 2) html += `<span style="color:var(--text-sub)">…</span>`; html += btn(String(pc), pc - 1); }
+  html += btn("›", selPage + 1, { disabled: selPage === pc - 1 });
+  html += `<span class="pg-info">${selPage + 1} / ${pc} 페이지 · ${scope}</span>`;
+  pager.innerHTML = html;
+  pager.querySelectorAll("button[data-pg]").forEach(b => b.addEventListener("click", () => {
+    selPage = Number(b.dataset.pg);
+    renderSelPage();
+  }));
+}
+
+function updateSelCount(){
+  const sel = selIds.size;                       // 실제 생성될(선택된) 총 건수
+  const shown = curIssues();
+  const shownSel = shown.filter(i => selIds.has(String(i.id))).length;  // 표시 중 선택 건수
+  const el = $("#sel-count");
+  if (el){
+    el.textContent = shown.length === pendingIssues.length
+      ? `생성 선택 ${sel}건`
+      : `생성 선택 ${sel}건 (표시 유형 중 ${shownSel}/${shown.length})`;
+  }
+  // '전체 선택' 체크 상태는 '표시 중인 이슈' 기준
+  const all = $("#sel-all");
+  if (all){
+    all.checked = (shown.length > 0 && shownSel === shown.length);
+    all.indeterminate = (shownSel > 0 && shownSel < shown.length);
+  }
+}
+function getSelectedIssues(){
+  return pendingIssues.filter(i => selIds.has(String(i.id)));
+}
+
+// ── 2단계: 선택한 이슈만 생성 (이슈 간 중복 회피) ──────
+async function runSelected(){
+  const issues = getSelectedIssues();
+  if (!issues.length){ statusEl.className = "err"; statusEl.textContent = "생성할 이슈를 하나 이상 선택하세요."; return; }
+  if (issues.length > genWarn &&
+      !confirm(`${issues.length}건을 선택했습니다. 이슈는 순차 생성되어 시간이 오래 걸릴 수 있어요.\n(${genWarn}건 이하를 권장) 이대로 진행할까요?`)){
+    return;
+  }
+  const mode = pendingMode; setMode(mode);
+  const { from, to, project } = pendingMeta;
+  const label = mode === "checklist" ? "체크리스트" : "테스트케이스";
+
+  refreshBtn.textContent = `➕ 더 생성 (${label})`;
+  setBusy(true); beginGen();
+  statusEl.className = ""; statusEl.textContent = "";
+  outEl.innerHTML = ""; exportbar.style.display = "none";
+  // 새로 생성 → 세트 상태 초기화(미저장)
+  currentKind = "fresh"; currentSetId = null; currentSetName = ""; currentMasterRef = { id:"", name:"" };
+  updateLibState(); renderRunSummary();
+  currentCases = []; currentMeta = { ...pendingMeta, mode };
+  const avoid = [];   // 이슈 간 중복 회피용 누적
+  showProgress(0, "준비 중…");
+
+  try {
+    let done = 0;
+    for (const iss of issues){
+      if (genCancelled) break;
+      showProgress(Math.round(done / issues.length * 100), `${label} 생성 중… (${done}/${issues.length})  #${iss.id}`);
+      let c;
+      try {
+        const res = await fetch("/api/tc_generate", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ issue_id: iss.id, mode, purpose: getPurpose(), date_from: from, date_to: to, project_id: project, avoid }),
+          signal: genController.signal,
+        });
+        c = await res.json();
+        if (c.error) c = { id: iss.id, subject: iss.subject, tracker: iss.tracker, priority: iss.priority, status: iss.status, result: { error: c.error } };
+      } catch (err){
+        if (genCancelled || err.name === "AbortError") break;   // 취소는 오류로 남기지 않음
+        c = { id: iss.id, subject: iss.subject, tracker: iss.tracker, priority: iss.priority, status: iss.status, result: { error: String(err.message || err) } };
+      }
+      currentCases.push(c);
+      collectExisting(c.result, mode).forEach(x => avoid.push(x));   // 다음 이슈부터 이 케이스들 회피
+      outEl.insertAdjacentHTML("beforeend", renderCase(c));
+      done++;
+      showProgress(Math.round(done / issues.length * 100), `${label} 생성 중… (${done}/${issues.length})`);
+    }
+    hideProgress();
+    if (genCancelled){
+      statusEl.textContent = `⛔ 생성을 취소했습니다 — ${currentCases.length}건까지 만들어 두었습니다.`;
+    } else {
+      statusEl.textContent = `${label} · 선택한 ${issues.length}건 생성 완료 (이슈 간 중복 케이스 제외)`;
+    }
+    if (currentCases.length){ exportbar.style.display = "flex"; saveWorkset(); }
+    else outEl.innerHTML = `<div class="empty">생성된 항목이 없습니다.</div>`;
+  } catch (e){
+    hideProgress();
+    statusEl.className = "err";
+    statusEl.textContent = "오류: " + e.message;
+    if (!outEl.innerHTML) outEl.innerHTML = `<div class="empty">생성에 실패했습니다.</div>`;
+  } finally {
+    endGen(); setBusy(false);
+  }
+}
+
+// ── 더 생성(누적, 중복 없이) ───────────────────────────
+function collectExisting(r, mode){
+  if (!r || r.error) return [];
+  if (mode === "checklist") return (r.checklist || []).map(i => i.text).filter(Boolean);
+  return (r.cases || []).map(x => `${x.depth1||""} ${x.objective||""}`.trim()).filter(Boolean);
+}
+function mergeMore(r, more, mode){
+  if (!more || more.error) return 0;
+  if (mode === "checklist"){
+    const add = more.checklist || [];
+    r.checklist = (r.checklist || []).concat(add);
+    return add.length;
+  }
+  const add = more.cases || [];
+  r.cases = (r.cases || []).concat(add);
+  return add.length;
+}
+async function loadMore(){
+  if (!currentCases.length) return;
+  const { from, to, mode, project } = currentMeta;
+  const label = mode === "checklist" ? "체크리스트" : "테스트케이스";
+  setBusy(true); beginGen(); statusEl.className = "";
+  showProgress(0, `추가 ${label} 준비 중…`);
+  let done = 0, added = 0;
+  try {
+    for (const c of currentCases){
+      if (genCancelled) break;
+      showProgress(Math.round(done / currentCases.length * 100), `추가 ${label} 생성 중… (${done}/${currentCases.length})  #${c.id}`);
+      const existing = collectExisting(c.result, mode);
+      let more;
+      try {
+        const res = await fetch("/api/tc_more", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ issue_id: c.id, mode, purpose: getPurpose(), existing, date_from: from, date_to: to, project_id: project }),
+          signal: genController.signal,
+        });
+        const data = await res.json();
+        more = data.error ? { error: data.error } : (data.result || {});
+      } catch (err){
+        if (genCancelled || err.name === "AbortError") break;
+        more = { error: String(err.message || err) };
+      }
+      added += mergeMore(c.result, more, mode);
+      replaceCard(c);
+      done++;
+      showProgress(Math.round(done / currentCases.length * 100), `추가 ${label} 생성 중… (${done}/${currentCases.length})`);
+    }
+    hideProgress();
+    statusEl.textContent = genCancelled
+      ? `⛔ 추가 생성을 취소했습니다 — 새 항목 ${added}개까지 이어붙였습니다.`
+      : `추가 생성 완료 — 중복되지 않는 새 항목 ${added}개를 이어붙였습니다.`;
+    saveWorkset();
+  } catch (e){
+    hideProgress(); statusEl.className = "err"; statusEl.textContent = "오류: " + e.message;
+  } finally { endGen(); setBusy(false); }
+}
+
+/** 실행 결과를 기록한다. 실행 시각도 함께 남겨 릴리스 준비도의 '소진 속도'를 계산할 수 있게 한다.
+ *  서버 파서가 밀리초 없는 ISO 형식을 기대하므로 .000 을 떼어낸다. */
+function setRowStatus(row, status){
+  row.status = status;
+  if (status) row.executed_at = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+  else delete row.executed_at;
+}
+
+// ── 체크 / 실행상태 / 삭제 / 편집 ──────────────────────
+outEl.addEventListener("change", e => {
+  const el = e.target;
+  const row = el.closest("[data-issue]"); if (!row) return;
+  const c = findCase(row.dataset.issue); if (!c || !c.result) return;
+  const idx = +row.dataset.idx;
+  const arr = row.dataset.kind === "cl" ? c.result.checklist : c.result.cases;
+
+  // 실행 결과(P/F) 드롭다운
+  if (el.classList.contains("exec")){
+    if (arr && arr[idx]) setRowStatus(arr[idx], el.value);
+    el.className = "exec st-" + (el.value || "none");
+    renderRunSummary();
+    saveWorkset(); scheduleRunSave();
+    return;
+  }
+  // 완료 체크박스
+  if (el.classList.contains("chk")){
+    if (arr && arr[idx]) arr[idx].done = el.checked;
+    if (row.dataset.kind === "cl") row.classList.toggle("done", el.checked);
+    const card = el.closest(".card");
+    if (card){ const pc = card.querySelector(".pc"); if (pc) pc.textContent = card.querySelectorAll(".chk:checked").length; }
+    saveWorkset(); scheduleRunSave();
+  }
+});
+
+outEl.addEventListener("click", e => {
+  const bugBtn = e.target.closest(".bug-btn");
+  if (bugBtn){
+    const row = bugBtn.closest("[data-issue]"); if (!row) return;
+    openBugModal(row.dataset.issue, row.dataset.kind, +row.dataset.idx);
+    return;
+  }
+  const cardDel = e.target.closest(".card-del");
+  if (cardDel){
+    const id = cardDel.dataset.delCard;
+    currentCases = currentCases.filter(c => String(c.id) !== String(id));
+    const node = outEl.querySelector(`.card[data-id="${id}"]`); if (node) node.remove();
+    saveWorkset();
+    if (!currentCases.length){ outEl.innerHTML = `<div class="empty">모든 항목을 삭제했습니다.</div>`; exportbar.style.display = "none"; }
+    return;
+  }
+  const rowDel = e.target.closest(".row-del");
+  if (rowDel){
+    e.preventDefault();
+    const row = rowDel.closest("[data-issue]"); if (!row) return;
+    const c = findCase(row.dataset.issue); if (!c || !c.result) return;
+    const idx = +row.dataset.idx;
+    const arr = row.dataset.kind === "cl" ? c.result.checklist : c.result.cases;
+    if (arr) arr.splice(idx, 1);
+    replaceCard(c);
+    renderRunSummary();
+    saveWorkset(); scheduleRunSave();
+  }
+});
+
+outEl.addEventListener("dblclick", e => {
+  const cell = e.target.closest(".editable");
+  if (!cell) return;
+  cell.dataset.orig = cell.innerText;
+  cell.setAttribute("contenteditable", "true");
+  cell.classList.add("editing");
+  cell.focus();
+  const sel = window.getSelection(), rng = document.createRange();
+  rng.selectNodeContents(cell); sel.removeAllRanges(); sel.addRange(rng);
+});
+outEl.addEventListener("keydown", e => {
+  const cell = e.target.closest(".editable[contenteditable='true']"); if (!cell) return;
+  if (e.key === "Enter" && !e.shiftKey){ e.preventDefault(); cell.blur(); }
+  else if (e.key === "Escape"){ cell.innerText = cell.dataset.orig || ""; cell.blur(); }
+});
+outEl.addEventListener("blur", e => {
+  const cell = e.target.closest ? e.target.closest(".editable[contenteditable='true']") : null;
+  if (!cell) return;
+  commitEdit(cell);
+}, true);
+function commitEdit(cell){
+  cell.removeAttribute("contenteditable"); cell.classList.remove("editing");
+  const row = cell.closest("[data-issue]"); if (!row) return;
+  const c = findCase(row.dataset.issue); if (!c || !c.result) return;
+  const idx = +row.dataset.idx, f = cell.dataset.f, val = cell.innerText.trim();
+  const arr = row.dataset.kind === "cl" ? c.result.checklist : c.result.cases;
+  if (arr && arr[idx]) arr[idx][f] = val;
+  saveWorkset(); scheduleRunSave();
+  if (f === "priority") replaceCard(c);   // 우선순위 색상 갱신
+}
+
+// ── 원본/실행 세트 (서버 저장·팀 공유) ─────────────────
+function clone(x){ return JSON.parse(JSON.stringify(x || [])); }
+function eachRow(cb){
+  currentCases.forEach(card => {
+    const r = card.result || {};
+    const arr = Array.isArray(r.checklist) ? r.checklist : (r.cases || []);
+    arr.forEach(row => cb(row));
+  });
+}
+function stripStatuses(cases){
+  return clone(cases).map(card => {
+    const r = card.result || {};
+    const arr = Array.isArray(r.checklist) ? r.checklist : (r.cases || []);
+    arr.forEach(row => { delete row.status; delete row.actual; delete row.done; });
+    return card;
+  });
+}
+function renderAll(){
+  if (!currentCases.length){ outEl.innerHTML = `<div class="empty">항목이 없습니다.</div>`; exportbar.style.display = "none"; }
+  else { outEl.innerHTML = currentCases.map(renderCase).join(""); exportbar.style.display = "flex"; }
+  renderRunSummary();
+}
+function renderRunSummary(){
+  const bar = $("#run-summary");
+  if (!isRun()){ bar.hidden = true; return; }
+  let total = 0; const c = { pass:0, fail:0, na:0, blocked:0 };
+  eachRow(row => { total++; const s = row.status || ""; if (c[s] !== undefined) c[s]++; });
+  const untested = total - (c.pass + c.fail + c.na + c.blocked);
+  const decided = c.pass + c.fail;
+  const rate = decided ? Math.round(c.pass / decided * 100) : 0;
+  bar.hidden = false;
+  bar.innerHTML =
+    `<span class="rs-pill">전체 ${total}</span>`
+    + `<span class="rs-pill rs-pass">Pass ${c.pass}</span>`
+    + `<span class="rs-pill rs-fail">Fail ${c.fail}</span>`
+    + `<span class="rs-pill rs-blocked">Blocked ${c.blocked}</span>`
+    + `<span class="rs-pill rs-na">N/A ${c.na}</span>`
+    + `<span class="rs-pill rs-untested">미시행 ${untested}</span>`
+    + `<span class="rs-rate">통과율 <span class="num">${rate}%</span></span>`;
+}
+function updateLibState(){
+  const s = $("#lib-state");
+  if (currentKind === "run"){ s.className = "lib-state run"; s.textContent = `▶ 진행 중: ${currentSetName || "(이름없음)"}`; }
+  else if (currentKind === "master"){ s.className = "lib-state"; s.textContent = `📁 원본: ${currentSetName || "(이름없음)"}`; }
+  else { s.className = "lib-state"; s.textContent = "새로 생성 (미저장)"; }
+  $("#run-save").hidden = (currentKind !== "run");
+}
+async function refreshSets(){
+  const proj = getProject();
+  try {
+    const res = await fetch(`/api/sets?project_id=${encodeURIComponent(proj)}`);
+    const sets = (await res.json()).sets || [];
+    const ms = sets.filter(s => s.type === "master");
+    const rs = sets.filter(s => s.type === "run");
+    const mSel = $("#master-load"), rSel = $("#run-load");
+    mSel.innerHTML = `<option value="">— 저장된 원본 (${ms.length}) —</option>`
+      + ms.map(s => `<option value="${esc(s.id)}">${esc(s.name)} (${s.rows}행)</option>`).join("");
+    rSel.innerHTML = `<option value="">— 저장된 진행 기록 (${rs.length}) —</option>`
+      + rs.map(s => { const c = s.status_counts || {};
+          return `<option value="${esc(s.id)}">${esc(s.name)} · ${esc(s.tester||"?")} · 통과 ${c.pass||0}/${s.rows}</option>`; }).join("");
+    if (currentSetId){ mSel.value = currentSetId; rSel.value = currentSetId; }
+  } catch (e){ /* 목록 실패는 조용히 무시 */ }
+}
+async function saveMaster(){
+  if (!currentCases.length){ alert("저장할 TC가 없습니다. 먼저 생성하거나 불러오세요."); return; }
+  const def = currentKind === "master" ? currentSetName : (currentSetName || fileStem());
+  const name = prompt("원본 이름:", def || "");
+  if (name === null) return;
+  const editingMaster = (currentKind === "master" && currentSetId);
+  const payload = {
+    type: "master", id: editingMaster ? currentSetId : undefined,
+    project: getProject(), name: name.trim(), mode: currentMeta.mode || lastMode,
+    meta: currentMeta, cases: stripStatuses(currentCases),
+  };
+  try {
+    const res = await fetch("/api/sets", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(payload) });
+    const data = await res.json(); if (data.error) throw new Error(data.error);
+    if (currentKind !== "run"){ currentKind = "master"; currentSetId = data.id; currentSetName = name.trim(); }
+    statusEl.className = ""; statusEl.textContent = `📁 원본 "${name.trim()}" 저장 완료`;
+    updateLibState(); refreshSets();
+  } catch (e){ statusEl.className = "err"; statusEl.textContent = "원본 저장 실패: " + e.message; }
+}
+async function startRun(){
+  if (!currentCases.length){ alert("진행할 테스트케이스가 없습니다. 먼저 원본을 만들거나 불러오세요."); return; }
+  const tester = ($("#tester-name").value || "").trim();
+  localStorage.setItem("tc_tester", tester);
+  const base = currentSetName || fileStem();
+  const name = prompt("진행 기록 이름:", `${base} - ${tester || "진행"} ${todayStr()}`);
+  if (name === null) return;
+  // 원본을 복제 → 진행 기록으로 시작(결과는 미시행으로 초기화)
+  const cases = stripStatuses(currentCases);
+  currentMasterRef = (currentKind === "master") ? { id: currentSetId || "", name: currentSetName || "" } : currentMasterRef;
+  currentCases = cases; currentKind = "run"; currentSetId = null; currentSetName = name.trim();
+  const payload = {
+    type: "run", project: getProject(), name: name.trim(), mode: currentMeta.mode || lastMode,
+    meta: currentMeta, tester, master_id: currentMasterRef.id, master_name: currentMasterRef.name, cases: currentCases,
+  };
+  try {
+    const res = await fetch("/api/sets", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(payload) });
+    const data = await res.json(); if (data.error) throw new Error(data.error);
+    currentSetId = data.id;
+    statusEl.className = ""; statusEl.textContent = `▶ 테스트 진행 "${name.trim()}" 시작 — 각 행의 결과(P/F)를 기록하세요. 변경은 자동 저장됩니다.`;
+  } catch (e){ statusEl.className = "err"; statusEl.textContent = "진행 시작 실패: " + e.message; }
+  renderAll(); updateLibState(); refreshSets();
+}
+async function openSet(id){
+  if (!id) return null;
+  const res = await fetch(`/api/sets/${encodeURIComponent(id)}`);
+  const rec = await res.json(); if (rec.error) throw new Error(rec.error);
+  return rec;
+}
+async function openMaster(){
+  const id = $("#master-load").value; if (!id){ alert("불러올 원본을 선택하세요."); return; }
+  try {
+    const rec = await openSet(id);
+    currentCases = clone(rec.cases); currentMeta = rec.meta || { mode: rec.mode };
+    setMode(rec.mode || "full"); currentMeta.mode = lastMode;
+    currentKind = "master"; currentSetId = id; currentSetName = rec.name || "";
+    currentMasterRef = { id: id, name: rec.name || "" };
+    statusEl.className = ""; statusEl.textContent = `📁 원본 "${rec.name}" 불러옴 (보기/편집). 테스트를 진행하려면 [진행 시작].`;
+    renderAll(); updateLibState(); refreshSets();
+  } catch (e){ statusEl.className = "err"; statusEl.textContent = "원본 불러오기 실패: " + e.message; }
+}
+async function openRun(){
+  const id = $("#run-load").value; if (!id){ alert("불러올 진행 기록을 선택하세요."); return; }
+  try {
+    const rec = await openSet(id);
+    currentCases = clone(rec.cases); currentMeta = rec.meta || { mode: rec.mode };
+    setMode(rec.mode || "full"); currentMeta.mode = lastMode;
+    currentKind = "run"; currentSetId = id; currentSetName = rec.name || "";
+    currentMasterRef = { id: rec.master_id || "", name: rec.master_name || "" };
+    if (rec.tester) $("#tester-name").value = rec.tester;
+    statusEl.className = ""; statusEl.textContent = `▶ 진행 기록 "${rec.name}" 이어서 편집 중 — 변경은 자동 저장됩니다.`;
+    renderAll(); updateLibState(); refreshSets();
+  } catch (e){ statusEl.className = "err"; statusEl.textContent = "진행 기록 불러오기 실패: " + e.message; }
+}
+async function saveRun(silent){
+  if (currentKind !== "run" || !currentSetId) return;
+  const payload = {
+    type: "run", id: currentSetId, project: getProject(), name: currentSetName,
+    mode: currentMeta.mode || lastMode, meta: currentMeta,
+    tester: ($("#tester-name").value || "").trim(),
+    master_id: currentMasterRef.id, master_name: currentMasterRef.name, cases: currentCases,
+  };
+  try {
+    const res = await fetch("/api/sets", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(payload) });
+    const data = await res.json(); if (data.error) throw new Error(data.error);
+    if (!silent){ statusEl.className = ""; statusEl.textContent = `💾 진행 기록 "${currentSetName}" 저장 완료`; refreshSets(); }
+  } catch (e){ if (!silent){ statusEl.className = "err"; statusEl.textContent = "진행 기록 저장 실패: " + e.message; } }
+}
+function scheduleRunSave(){
+  if (currentKind !== "run" || !currentSetId) return;
+  clearTimeout(runSaveTimer);
+  runSaveTimer = setTimeout(() => saveRun(true), 1200);
+}
+async function deleteSet(){
+  const id = $("#run-load").value || $("#master-load").value;
+  if (!id){ alert("삭제할 원본 또는 진행 기록을 선택하세요."); return; }
+  if (!confirm("선택한 세트를 삭제할까요? 되돌릴 수 없습니다.")) return;
+  try {
+    await fetch(`/api/sets/${encodeURIComponent(id)}`, { method:"DELETE" });
+    if (id === currentSetId){ currentKind = "fresh"; currentSetId = null; currentSetName = ""; updateLibState(); renderRunSummary(); }
+    statusEl.className = ""; statusEl.textContent = "세트를 삭제했습니다.";
+    refreshSets();
+  } catch (e){ statusEl.className = "err"; statusEl.textContent = "삭제 실패: " + e.message; }
+}
+function todayStr(){ return new Date().toISOString().slice(0, 10); }
+
+// ── 실패 케이스 → Redmine 결함 등록 ────────────────────
+let bugTarget = null;   // { issueId, kind, idx }
+function openBugModal(issueId, kind, idx){
+  const c = findCase(issueId); if (!c || !c.result) return;
+  const arr = kind === "cl" ? c.result.checklist : c.result.cases;
+  const row = arr && arr[idx]; if (!row) return;
+  bugTarget = { issueId, kind, idx };
+  const tester = ($("#tester-name").value || "").trim();
+  let subject, desc;
+  if (kind === "cl"){
+    subject = `[결함] ${row.text || c.subject}`;
+    desc = `■ 원본 이슈: #${c.id} ${c.subject}\n`
+      + `■ 체크 항목: ${row.text || ""}\n`
+      + `■ 분류: ${row.category || ""}\n\n`
+      + `[실제 결과]\n${row.actual || ""}\n\n`
+      + `(QA 진행: ${tester || "-"}, ${todayStr()})`;
+  } else {
+    subject = `[결함] ${row.objective || c.subject}`;
+    desc = `■ 원본 이슈: #${c.id} ${c.subject}\n`
+      + `■ 테스트 목적: ${row.objective || ""}\n`
+      + `■ 우선순위: ${row.priority || ""} / 분류: ${[row.depth1,row.depth2,row.depth3,row.depth4].filter(Boolean).join(" > ")}\n\n`
+      + `[사전조건]\n${row.precondition || ""}\n\n`
+      + `[재현 절차]\n${row.procedure || ""}\n\n`
+      + `[기대 결과]\n${row.expected || ""}\n\n`
+      + `[실제 결과]\n${row.actual || ""}\n\n`
+      + `(QA 진행: ${tester || "-"}, ${todayStr()})`;
+  }
+  $("#bug-subject").value = subject;
+  $("#bug-desc").value = desc;
+  $("#bug-msg").className = "guide-msg"; $("#bug-msg").textContent = "";
+  $("#bug-modal").hidden = false;
+}
+function closeBugModal(){ $("#bug-modal").hidden = true; bugTarget = null; }
+async function submitBug(){
+  if (!bugTarget) return;
+  const subject = $("#bug-subject").value.trim();
+  if (!subject){ $("#bug-msg").className = "guide-msg err"; $("#bug-msg").textContent = "제목을 입력하세요."; return; }
+  const btn = $("#bug-submit"); btn.disabled = true;
+  $("#bug-msg").className = "guide-msg"; $("#bug-msg").textContent = "등록 중…";
+  try {
+    const res = await fetch("/api/redmine_issue", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ project_id: getProject(), subject, description: $("#bug-desc").value }),
+    });
+    const data = await res.json(); if (data.error) throw new Error(data.error);
+    // 케이스에 결함 링크 기록
+    const c = findCase(bugTarget.issueId);
+    const arr = bugTarget.kind === "cl" ? c.result.checklist : c.result.cases;
+    if (arr && arr[bugTarget.idx]){
+      arr[bugTarget.idx].defect = { id: data.id, url: data.url };
+      if (!arr[bugTarget.idx].status) arr[bugTarget.idx].status = "fail";
+    }
+    replaceCard(c); renderRunSummary(); saveWorkset(); scheduleRunSave();
+    $("#bug-msg").className = "guide-msg ok"; $("#bug-msg").textContent = `등록됨: #${data.id}`;
+    setTimeout(closeBugModal, 700);
+  } catch (e){
+    $("#bug-msg").className = "guide-msg err"; $("#bug-msg").textContent = "등록 실패: " + e.message;
+  } finally { btn.disabled = false; }
+}
+
+// ── 엑셀(xlsx) 내보내기 ────────────────────────────────
+async function exportXlsx(){
+  if (!currentCases.length) return;
+  statusEl.className = ""; statusEl.textContent = "엑셀(xlsx) 생성 중…";
+  try {
+    const res = await fetch("/api/export_xlsx", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: currentMeta.mode || lastMode, cases: currentCases, title: fileStem() }),
+    });
+    if (!res.ok){ const e = await res.json().catch(() => ({})); throw new Error(e.error || ("HTTP " + res.status)); }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = fileStem() + ".xlsx";
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    statusEl.textContent = "엑셀(xlsx) 저장 완료";
+  } catch (e){ statusEl.className = "err"; statusEl.textContent = "엑셀 내보내기 실패: " + e.message; }
+}
+
+// ── 커버리지 요약 ──────────────────────────────────────
+function computeCoverage(){
+  const mode = currentMeta.mode || lastMode;
+  const perIssue = [];
+  const tot = { rows: 0, P0: 0, P1: 0, P2: 0, types: {}, cats: {} };
+  currentCases.forEach(c => {
+    const r = c.result || {};
+    if (mode === "checklist"){
+      const arr = r.checklist || [];
+      arr.forEach(i => { const cat = i.category || "기타"; tot.cats[cat] = (tot.cats[cat]||0)+1; });
+      tot.rows += arr.length;
+      perIssue.push({ id: c.id, subject: c.subject, n: arr.length, err: !!r.error });
+    } else {
+      const arr = r.cases || [];
+      arr.forEach(x => {
+        const p = String(x.priority||"").toUpperCase();
+        if (tot[p] !== undefined) tot[p]++;
+        const t = x.type || "기타"; tot.types[t] = (tot.types[t]||0)+1;
+      });
+      tot.rows += arr.length;
+      perIssue.push({ id: c.id, subject: c.subject, n: arr.length, err: !!r.error,
+        P0: arr.filter(x=>String(x.priority).toUpperCase()==="P0").length,
+        P1: arr.filter(x=>String(x.priority).toUpperCase()==="P1").length,
+        P2: arr.filter(x=>String(x.priority).toUpperCase()==="P2").length });
+    }
+  });
+  return { mode, perIssue, tot };
+}
+function renderCoverage(){
+  const { mode, perIssue, tot } = computeCoverage();
+  const zero = perIssue.filter(p => p.n === 0).length;
+  const distPills = mode === "checklist"
+    ? Object.entries(tot.cats).map(([k,v]) => `<span class="rs-pill">${esc(k)} ${v}</span>`).join("")
+    : `<span class="rs-pill">P0 ${tot.P0}</span><span class="rs-pill">P1 ${tot.P1}</span><span class="rs-pill">P2 ${tot.P2}</span>`
+      + Object.entries(tot.types).map(([k,v]) => `<span class="rs-pill">${esc(k)} ${v}</span>`).join("");
+  let head, bodyRows;
+  if (mode === "checklist"){
+    head = `<tr><th>이슈</th><th class="cov-subj">제목</th><th>항목 수</th></tr>`;
+    bodyRows = perIssue.map(p => `<tr class="${p.n===0?"zero":""}"><td>#${esc(p.id)}</td><td class="cov-subj">${esc(p.subject)}</td><td>${p.err?"오류":p.n}</td></tr>`).join("");
+  } else {
+    head = `<tr><th>이슈</th><th class="cov-subj">제목</th><th>P0</th><th>P1</th><th>P2</th><th>합계</th></tr>`;
+    bodyRows = perIssue.map(p => `<tr class="${p.n===0?"zero":""}"><td>#${esc(p.id)}</td><td class="cov-subj">${esc(p.subject)}</td><td>${p.P0||0}</td><td>${p.P1||0}</td><td>${p.P2||0}</td><td><b>${p.err?"오류":p.n}</b></td></tr>`).join("");
+  }
+  const warn = zero > 0
+    ? `<div class="rs-pill rs-fail" style="margin:4px 0 10px;">⚠ 케이스 0건 이슈 ${zero}건 — 보강 권장</div>` : "";
+  const gaps = (mode !== "checklist")
+    ? (tot.types["경계"] ? "" : `<div class="rs-pill rs-blocked">경계 케이스 0건 — 보강 검토</div>`)
+      + (tot.types["예외"] ? "" : `<div class="rs-pill rs-blocked">예외 케이스 0건 — 보강 검토</div>`)
+    : "";
+  $("#cov-body").innerHTML =
+    `<div class="cov-tot"><span class="rs-pill">이슈 ${perIssue.length}</span><span class="rs-pill">총 케이스 ${tot.rows}</span>${distPills}</div>`
+    + warn + gaps
+    + `<table class="cov-table"><thead>${head}</thead><tbody>${bodyRows}</tbody></table>`;
+  $("#cov-modal").hidden = false;
+}
+
+// ── 내보내기 ──────────────────────────────────────────
+function downloadBlob(content, filename, type){
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+function fileStem(){
+  const kind = currentMeta.mode === "checklist" ? "체크리스트" : "테스트케이스";
+  let r;
+  if (currentMeta.version) r = String(currentMeta.versionName || currentMeta.version).replace(/[\\/:*?"<>|]/g, "");
+  else r = currentMeta.from === currentMeta.to ? currentMeta.from : `${currentMeta.from}_${currentMeta.to}`;
+  return `${kind}_${r || ""}`;
+}
+/** 외부 스타일시트 + 인라인 스타일을 모두 모아 문자열로. HTML 단독 저장용. */
+async function collectCss(){
+  const links = [...document.querySelectorAll('link[rel="stylesheet"]')];
+  const fetched = await Promise.all(links.map(l =>
+    fetch(l.href).then(r => r.ok ? r.text() : "").catch(() => "")));
+  const inline = [...document.querySelectorAll("style")].map(s => s.innerHTML);
+  return fetched.concat(inline).join("\n");
+}
+
+async function exportHtml(){
+  if (!currentCases.length) return;
+  const clone = outEl.cloneNode(true);
+  clone.querySelectorAll("input.chk").forEach(cb => { if (cb.checked) cb.setAttribute("checked", "checked"); else cb.removeAttribute("checked"); });
+  // 실행 결과 드롭다운 → 정적 텍스트(라벨)로 치환 (실제 선택값은 원본에서 읽음)
+  const liveExec = outEl.querySelectorAll("select.exec");
+  clone.querySelectorAll("select.exec").forEach((sel, i) => {
+    const val = liveExec[i] ? liveExec[i].value : "";
+    const span = document.createElement("span");
+    span.className = "exec-static st-" + (val || "none");
+    span.textContent = EXEC_LABELS[val || ""] || "";
+    sel.replaceWith(span);
+  });
+  // 스타일은 외부 파일로 분리돼 있으므로, 단독으로 열리는 HTML 을 만들려면 내용을 받아와 심는다.
+  const css = await collectCss();
+  const theme = document.documentElement.getAttribute("data-theme") || "light";
+  const title = fileStem();
+  const html = `<!DOCTYPE html><html lang="ko" data-theme="${theme}"><head><meta charset="UTF-8">`
+    + `<title>${title}</title><style>${css}\nbody{padding:24px;} .controls,.progbar-wrap,#exportbar,.back,.hint-line,.card-del,.row-del,.bug-btn,.lib-bar{display:none!important;}</style>`
+    + `</head><body><div class="wrap"><h1 style="margin-bottom:14px;">${title}</h1>${clone.innerHTML}</div></body></html>`;
+  downloadBlob(html, title + ".html", "text/html;charset=utf-8");
+}
+/* CSV·엑셀에서 걸러낼 수 있도록 근거 없음을 명시 문구로 남긴다 */
+function evCsv(row){
+  const st = evState(row);
+  return st === "ok" ? String(row.evidence).trim()
+       : st === "none" ? "⚠ 근거 없음 (검수 필요)" : "";
+}
+function csvCell(v){ v = String(v ?? ""); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+function exportCsv(){
+  if (!currentCases.length) return;
+  const BOM = String.fromCharCode(0xFEFF);
+  let rows;
+  const stLabel = s => EXEC_LABELS[s || ""] || "";
+  if (currentMeta.mode === "checklist"){
+    rows = [["이슈ID","제목","분류","항목","근거","결과","완료"]];
+    currentCases.forEach(c => {
+      const r = c.result || {};
+      if (r.error){ rows.push([c.id, c.subject, "오류", r.error, "", "", ""]); return; }
+      (r.checklist || []).forEach(i => rows.push([c.id, c.subject, i.category || "", i.text || "", evCsv(i), stLabel(i.status), i.done ? "O" : ""]));
+    });
+  } else {
+    rows = [["이슈ID","제목","No","우선순위","1Depth","2Depth","3Depth","4Depth","Type","테스트목적","사전조건","테스트절차","기대결과","근거","결과","실제결과","완료"]];
+    currentCases.forEach(c => {
+      const r = c.result || {};
+      if (r.error){ rows.push([c.id, c.subject, "", "오류", r.error, "", "", "", "", "", "", "", "", "", "", "", ""]); return; }
+      (r.cases || []).forEach((x, idx) => rows.push([
+        c.id, c.subject, idx + 1, x.priority || "",
+        x.depth1 || "", x.depth2 || "", x.depth3 || "", x.depth4 || "",
+        x.type || "", x.objective || "", x.precondition || "", x.procedure || "", x.expected || "",
+        evCsv(x), stLabel(x.status), x.actual || "",
+        x.done ? "O" : "",
+      ]));
+    });
+  }
+  const csv = rows.map(r => r.map(csvCell).join(",")).join("\r\n");
+  downloadBlob(BOM + csv, fileStem() + ".csv", "text/csv;charset=utf-8");
+}
+
+// ── 범위 달력 (수동 입력 유지 + 클릭 시 달력) ──────────
+let selStart = null, selEnd = null, calView = { y: 0, m: 0 };
+function isoOf(y, m, d){ return `${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`; }
+function renderCal(){
+  const wd = ["일","월","화","수","목","금","토"];
+  const daysInMonth = new Date(calView.y, calView.m + 1, 0).getDate();
+  const startDow = new Date(calView.y, calView.m, 1).getDay();
+  const todayIso = new Date().toISOString().slice(0, 10);
+  let html = `<div class="cal-head">
+      <button type="button" class="cal-nav" data-nav="-1">‹</button>
+      <span>${calView.y}년 ${calView.m + 1}월</span>
+      <button type="button" class="cal-nav" data-nav="1">›</button>
+    </div>
+    <div class="cal-grid">${wd.map(d => `<span class="cal-w">${d}</span>`).join("")}</div>
+    <div class="cal-grid">`;
+  for (let i = 0; i < startDow; i++) html += `<span class="cal-day muted"></span>`;
+  for (let d = 1; d <= daysInMonth; d++){
+    const iso = isoOf(calView.y, calView.m, d);
+    let cls = "";
+    if (selStart && iso === selStart) cls = " sels";
+    else if (selEnd && iso === selEnd) cls = " sele";
+    else if (selStart && selEnd && iso > selStart && iso < selEnd) cls = " range";
+    const ring = (iso === todayIso && !cls) ? " style=\"outline:1px solid var(--indigo)\"" : "";
+    html += `<span class="cal-day${cls}" data-d="${iso}"${ring}>${d}</span>`;
+  }
+  html += `</div><div class="cal-hint">시작일 → 종료일 순서로 클릭</div>`;
+  calpop.innerHTML = html;
+}
+function openCal(){
+  selStart = normDate(fromEl.value); selEnd = normDate(toEl.value);
+  const base = selStart ? new Date(selStart) : new Date();
+  calView = { y: base.getFullYear(), m: base.getMonth() };
+  renderCal(); calpop.classList.add("show");
+}
+function closeCal(){ calpop.classList.remove("show"); }
+calpop.addEventListener("click", e => {
+  // 달력 내부 클릭은 바깥-클릭 닫기 핸들러로 전파되지 않게 막는다.
+  // (렌더 재생성으로 클릭 요소가 DOM에서 제거되면 contains 판정이 false가 되어 달력이 꺼지는 문제 방지)
+  e.stopPropagation();
+  const nav = e.target.closest(".cal-nav");
+  if (nav){
+    calView.m += Number(nav.dataset.nav);
+    if (calView.m < 0){ calView.m = 11; calView.y--; }
+    if (calView.m > 11){ calView.m = 0; calView.y++; }
+    renderCal(); return;
+  }
+  const day = e.target.closest(".cal-day[data-d]"); if (!day) return;
+  const d = day.dataset.d;
+  if (!selStart || (selStart && selEnd)){ selStart = d; selEnd = null; fromEl.value = d; toEl.value = ""; }
+  else {
+    if (d >= selStart){ selEnd = d; fromEl.value = selStart; toEl.value = d; renderCal(); setTimeout(closeCal, 120); return; }
+    else { selStart = d; selEnd = null; fromEl.value = d; toEl.value = ""; }
+  }
+  renderCal();
+});
+fromEl.addEventListener("focus", openCal);
+toEl.addEventListener("focus", openCal);
+fromEl.addEventListener("click", openCal);
+toEl.addEventListener("click", openCal);
+document.addEventListener("click", e => { if (!calwrap.contains(e.target)) closeCal(); });
+
+// ── 버튼 ──────────────────────────────────────────────
+runFullBtn.addEventListener("click", () => startSelection("full"));
+runCheckBtn.addEventListener("click", () => startSelection("checklist"));
+setMode(lastMode);   // 마크업 기본값과 실제 상태를 맞춘다
+refreshBtn.addEventListener("click", loadMore);
+expHtmlBtn.addEventListener("click", exportHtml);
+expCsvBtn.addEventListener("click", exportCsv);
+$("#exp-xlsx").addEventListener("click", exportXlsx);
+$("#show-coverage").addEventListener("click", renderCoverage);
+$("#cov-close").addEventListener("click", () => { $("#cov-modal").hidden = true; });
+$("#cov-modal").addEventListener("click", e => { if (e.target.id === "cov-modal") $("#cov-modal").hidden = true; });
+
+// 프로젝트 지침: 저장/되돌리기, 프로젝트 바꾸면 해당 지침 다시 로드
+$("#guide-save").addEventListener("click", saveGuide);
+$("#guide-reload").addEventListener("click", loadGuide);
+$("#guide-default").addEventListener("click", () => {
+  guideText.value = guideDefault;
+  setGuideMsg("기본 지침을 넣었습니다. 저장해야 이 프로젝트에 적용됩니다.");
+});
+projectEl.addEventListener("change", () => {
+  refreshGuideState();
+  if (getProject() !== guideLoadedProj) loadGuide();
+  refreshSets();
+  populateVersions();
+});
+guideText.addEventListener("input", () => setGuideMsg(""));
+
+// 원본/실행 세트 버튼
+$("#master-save").addEventListener("click", saveMaster);
+$("#master-open").addEventListener("click", openMaster);
+$("#run-start").addEventListener("click", startRun);
+$("#run-open").addEventListener("click", openRun);
+$("#run-save").addEventListener("click", () => saveRun(false));
+$("#set-delete").addEventListener("click", deleteSet);
+// 결함 등록 모달
+$("#bug-submit").addEventListener("click", submitBug);
+$("#bug-cancel").addEventListener("click", closeBugModal);
+$("#bug-modal").addEventListener("click", e => { if (e.target.id === "bug-modal") closeBugModal(); });
+$("#tester-name").value = localStorage.getItem("tc_tester") || "";
+$("#tester-name").addEventListener("change", () => {
+  localStorage.setItem("tc_tester", ($("#tester-name").value || "").trim());
+  scheduleRunSave();
+});
+
+// 기본값: 오늘 ~ 오늘
+const today = new Date().toISOString().slice(0, 10);
+fromEl.value = today; toEl.value = today;
+
+// 프로젝트: 대시보드와 공유(localStorage) → 없으면 템플릿 기본값 유지
+const savedProj = localStorage.getItem("tc_project");
+if (savedProj) projectEl.value = savedProj;
+
+// 이전 작업 내용 복원 (편집/삭제/체크 유지)
+(function restore(){
+  const ws = loadWorkset();
+  if (ws && Array.isArray(ws.cases) && ws.cases.length){
+    currentCases = ws.cases; currentMeta = ws.meta || {};
+    if (currentMeta.from) fromEl.value = currentMeta.from;
+    if (currentMeta.to) toEl.value = currentMeta.to;
+    if (currentMeta.project) projectEl.value = currentMeta.project;
+    setMode(currentMeta.mode || "full");
+    outEl.innerHTML = currentCases.map(renderCase).join("");
+    exportbar.style.display = "flex";
+    refreshBtn.disabled = false;
+    refreshBtn.textContent = `➕ 더 생성 (${lastMode === "checklist" ? "체크리스트" : "테스트케이스"})`;
+    statusEl.textContent = "이전 작업 내용을 불러왔습니다 (편집/삭제/체크 유지). 새로 만들려면 위 버튼을 누르세요.";
+  }
+})();
+
+// 현재 프로젝트의 저장된 지침 초기 로드
+loadGuide();
+// 세트(원본/실행) 목록·상태 초기화
+updateLibState();
+refreshSets();
+populateVersions();
+
+/* ══════════════════════════════════════════════════════════════════
+   여기부터: 기획서 기반 생성 · 변경 이력(diff) · 키보드 단축키
+   기존 로직을 건드리지 않고 얹는 부분이다.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── 공통: 모달 열고 닫기 ─────────────────────────────────────── */
+function openModal(id){ $("#" + id).hidden = false; }
+function closeModal(id){ $("#" + id).hidden = true; }
+["cov-modal", "bug-modal", "rev-modal", "keys-modal"].forEach(id => {
+  const box = $("#" + id);
+  if (box) box.addEventListener("click", e => { if (e.target === box) box.hidden = true; });
+});
+$("#rev-close").addEventListener("click", () => closeModal("rev-modal"));
+$("#keys-close").addEventListener("click", () => closeModal("keys-modal"));
+$("#show-keys").addEventListener("click", () => openModal("keys-modal"));
+
+/* ══════════════════════════════════════════════════════════════════
+   1) 기획서로 만들기 — 이슈가 없어도 개발 전에 케이스를 준비한다
+   ══════════════════════════════════════════════════════════════════ */
+const specText = $("#spec-text"), specTitle = $("#spec-title"), specCount = $("#spec-count");
+
+specText.addEventListener("input", () => {
+  specCount.textContent = specText.value.length.toLocaleString() + "자";
+});
+$("#spec-clear").addEventListener("click", () => {
+  specText.value = ""; specTitle.value = "";
+  specCount.textContent = "0자";
+  $("#attach-list").innerHTML = "";
+  specText.focus();
+});
+
+/* ── 첨부: 파일 · Figma → 텍스트로 바꿔 입력칸에 채운다 ──────────
+   추출 결과를 곧바로 모델에 넘기지 않고 화면에 보여주는 이유는,
+   무엇이 들어가는지 사용자가 확인하고 고칠 수 있어야 하기 때문이다. */
+const attachList = $("#attach-list");
+const KIND_ICON = { pdf: "📕", docx: "📘", image: "🖼", figma: "🎨", html: "🌐", text: "📄" };
+
+function fmtSize(bytes){
+  return bytes > 1024 * 1024 ? (bytes / 1024 / 1024).toFixed(1) + "MB"
+       : bytes > 1024 ? Math.round(bytes / 1024) + "KB" : bytes + "B";
+}
+
+function addChip(label, sizeText){
+  const chip = document.createElement("span");
+  chip.className = "attach-chip busy";
+  chip.innerHTML = `<span class="ico">⏳</span><span class="nm">${esc(label)}</span>` +
+                   `<span class="sz">${esc(sizeText || "")}</span>`;
+  attachList.appendChild(chip);
+  return chip;
+}
+
+function finishChip(chip, ok, kind, note){
+  chip.classList.remove("busy");
+  chip.querySelector(".ico").textContent = ok ? (KIND_ICON[kind] || "📄") : "⚠";
+  if (!ok){
+    chip.classList.add("bad");
+    chip.title = note || "";
+    chip.querySelector(".sz").textContent = "실패";
+  } else {
+    chip.querySelector(".sz").textContent = note || "";
+    const remove = document.createElement("button");
+    remove.type = "button"; remove.className = "rm"; remove.textContent = "×";
+    remove.title = "이 첨부 표시만 지웁니다 (아래 내용은 직접 지워주세요)";
+    remove.addEventListener("click", () => chip.remove());
+    chip.appendChild(remove);
+  }
+}
+
+/** 추출된 글을 입력칸 끝에 덧붙인다. 어디서 온 내용인지 구분선을 함께 남긴다. */
+function appendSpec(source, text){
+  const header = `\n\n===== [${source}] =====\n`;
+  specText.value = (specText.value.trim() ? specText.value.trimEnd() : "") + header + text;
+  specText.dispatchEvent(new Event("input"));
+  if (!specTitle.value.trim()) specTitle.value = source.replace(/\.[A-Za-z0-9]+$/, "");
+  $("#spec-box").open = true;
+}
+
+async function extractFiles(files){
+  for (const file of files){
+    const chip = addChip(file.name, fmtSize(file.size));
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const res = await fetch("/api/extract_spec", { method: "POST", body: form });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      appendSpec(data.source, data.text);
+      finishChip(chip, true, data.kind, data.chars.toLocaleString() + "자" + (data.truncated ? " (일부)" : ""));
+      statusEl.className = ""; statusEl.textContent = `"${data.source}" 내용을 불러왔습니다. 확인·수정 후 생성하세요.`;
+    } catch (e){
+      finishChip(chip, false, null, e.message);
+      statusEl.className = "err"; statusEl.textContent = `${file.name}: ${e.message}`;
+    }
+  }
+}
+
+$("#attach-pick").addEventListener("click", () => $("#attach-input").click());
+$("#attach-input").addEventListener("change", e => {
+  extractFiles([...e.target.files]);
+  e.target.value = "";      // 같은 파일을 다시 골라도 change 가 뜨도록
+});
+
+$("#figma-load").addEventListener("click", async () => {
+  const url = $("#figma-url").value.trim();
+  if (!url){ $("#figma-url").focus(); return; }
+  const chip = addChip("Figma", "");
+  try {
+    const res = await fetch("/api/extract_spec", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url })
+    });
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    appendSpec(data.source, data.text);
+    finishChip(chip, true, "figma", data.chars.toLocaleString() + "자");
+    $("#figma-url").value = "";
+    statusEl.className = ""; statusEl.textContent = "Figma 내용을 불러왔습니다. 확인·수정 후 생성하세요.";
+  } catch (e){
+    finishChip(chip, false, null, e.message);
+    statusEl.className = "err"; statusEl.textContent = "Figma: " + e.message;
+  }
+});
+$("#figma-url").addEventListener("keydown", e => {
+  if (e.key === "Enter"){ e.preventDefault(); $("#figma-load").click(); }
+});
+
+// 끌어다 놓기
+const dropZone = $("#spec-attach");
+["dragenter", "dragover"].forEach(type =>
+  dropZone.addEventListener(type, e => { e.preventDefault(); dropZone.classList.add("dragging"); }));
+["dragleave", "drop"].forEach(type =>
+  dropZone.addEventListener(type, e => { e.preventDefault(); dropZone.classList.remove("dragging"); }));
+dropZone.addEventListener("drop", e => {
+  const files = [...(e.dataTransfer?.files || [])];
+  if (files.length) extractFiles(files);
+});
+
+$("#spec-run").addEventListener("click", async () => {
+  const body = specText.value.trim();
+  if (!body){ specText.focus(); statusEl.className = "err"; statusEl.textContent = "기획서 내용을 붙여넣으세요."; return; }
+
+  const mode = lastMode || "full";
+  const title = specTitle.value.trim() || "기획서";
+  // 같은 문서를 여러 번 돌려도 카드가 겹치지 않도록 번호를 붙인다.
+  const seq = currentCases.filter(c => String(c.id).startsWith("SPEC-")).length + 1;
+
+  setBusy(true);
+  beginGen();
+  showProgress(20, "기획서 분석 중…");
+  statusEl.className = ""; statusEl.textContent = "";
+
+  try {
+    const res = await fetch("/api/tc_from_spec", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: genController ? genController.signal : undefined,
+      body: JSON.stringify({
+        title, spec: body, mode, purpose: getPurpose(),
+        project_id: getProject(),
+        card_id: "SPEC-" + seq,
+        avoid: currentCases.flatMap(c => collectExisting(c.result || {}, mode)).slice(0, 120)
+      })
+    });
+    const card = await res.json();
+    if (card.error) throw new Error(card.error);
+
+    showProgress(100, "완료");
+    currentCases.push(card);
+    currentMeta = Object.assign({}, currentMeta, { mode, project: getProject() });
+    renderAll();
+    saveWorkset();
+    exportbar.style.display = "flex";
+    refreshBtn.disabled = false;
+    statusEl.textContent = `기획서 "${title}" 로 케이스를 만들었습니다. 표에서 바로 수정할 수 있습니다.`;
+    $("#spec-box").open = false;
+  } catch (e){
+    statusEl.className = "err";
+    statusEl.textContent = e.name === "AbortError" ? "생성을 취소했습니다." : "오류: " + e.message;
+  } finally {
+    hideProgress(); endGen(); setBusy(false);
+  }
+});
+
+/* ══════════════════════════════════════════════════════════════════
+   2) 변경 이력 — 원본을 다시 저장할 때마다 직전 상태가 보관된다
+   ══════════════════════════════════════════════════════════════════ */
+$("#rev-open").addEventListener("click", async () => {
+  const sid = $("#master-load").value || (currentKind === "master" ? currentSetId : "");
+  if (!sid){
+    statusEl.className = "err";
+    statusEl.textContent = "먼저 원본을 선택하거나 열어주세요. (변경 이력은 저장된 원본에만 쌓입니다)";
+    return;
+  }
+  openModal("rev-modal");
+  $("#rev-body").innerHTML = '<p class="muted">불러오는 중…</p>';
+  try {
+    const res = await fetch(`/api/sets/${encodeURIComponent(sid)}/revisions`);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    renderRevisions(sid, data.revisions || []);
+  } catch (e){
+    $("#rev-body").innerHTML = `<div class="err-box">⚠ ${esc(e.message)}</div>`;
+  }
+});
+
+function renderRevisions(sid, revisions){
+  if (!revisions.length){
+    $("#rev-body").innerHTML =
+      `<div class="empty">아직 변경 이력이 없습니다.<br>
+       이 원본을 <b>다시 저장</b>하면 그 직전 상태가 여기에 쌓입니다.</div>`;
+    return;
+  }
+  $("#rev-body").innerHTML = `
+    <p class="guide-help">비교할 시점을 고르면 <b>지금 저장된 내용</b>과 무엇이 달라졌는지 보여줍니다.</p>
+    <div class="rev-list">
+      ${revisions.map(r => `
+        <div class="rev-row" data-rev="${esc(r.rev)}">
+          <span class="rt">${esc(r.saved_at || "시각 미상")}</span>
+          <span class="muted">이슈 ${r.issues}건 · 항목 ${r.rows}개</span>
+          <span class="rm">이 시점과 비교 →</span>
+        </div>`).join("")}
+    </div>
+    <div id="rev-diff" style="margin-top:18px"></div>`;
+
+  $("#rev-body").querySelectorAll(".rev-row").forEach(row => {
+    row.addEventListener("click", () => loadDiff(sid, row.dataset.rev));
+  });
+}
+
+async function loadDiff(sid, rev){
+  const box = $("#rev-diff");
+  box.innerHTML = '<p class="muted">비교 중…</p>';
+  try {
+    const res = await fetch(`/api/sets/${encodeURIComponent(sid)}/diff?base=${encodeURIComponent(rev)}`);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    box.innerHTML = renderDiff(data);
+  } catch (e){
+    box.innerHTML = `<div class="err-box">⚠ ${esc(e.message)}</div>`;
+  }
+}
+
+const FIELD_LABEL = {
+  priority: "우선순위", type: "유형", depth1: "1Depth", depth2: "2Depth",
+  depth3: "3Depth", depth4: "4Depth", objective: "테스트 목적",
+  precondition: "사전조건", procedure: "테스트 절차", expected: "기대결과",
+  category: "분류", text: "항목"
+};
+
+function renderDiff(data){
+  const s = data.summary;
+  if (!s.has_change){
+    return `<div class="empty">이 시점과 비교해 <b>달라진 내용이 없습니다.</b></div>`;
+  }
+  const head = `
+    <div class="diff-summary">
+      <span class="diff-stat add">＋ 추가 ${s.added}</span>
+      <span class="diff-stat del">－ 삭제 ${s.removed}</span>
+      <span class="diff-stat mod">✎ 변경 ${s.changed}</span>
+      <span class="diff-stat">= 그대로 ${s.unchanged}</span>
+    </div>`;
+
+  const KIND = { issue_added: "🆕 새 이슈", issue_removed: "🗑 빠진 이슈", issue_kept: "" };
+  const blocks = data.issues.filter(i => i.summary.has_change).map(i => `
+    <div class="diff-issue">
+      <h4><span class="iss-id">#${esc(i.issue_id)}</span>
+          <span>${esc(i.subject || "(제목 없음)")}</span>
+          <span class="muted" style="margin-left:auto">${KIND[i.kind] || ""}</span></h4>
+      <div class="diff-list">
+        ${i.added.map(a => `<div class="diff-item add">＋ ${esc(a.label)}</div>`).join("")}
+        ${i.removed.map(r => `<div class="diff-item del">－ ${esc(r.label)}</div>`).join("")}
+        ${i.changed.map(c => `
+          <div class="diff-item mod">✎ ${esc(c.label)}
+            ${Object.entries(c.fields).map(([k, v]) => `
+              <div class="diff-field">
+                <span class="k">${esc(FIELD_LABEL[k] || k)}</span>
+                <span class="before">${esc(String(v.before).slice(0, 120))}</span>
+                <span> → </span>
+                <span class="after">${esc(String(v.after).slice(0, 120))}</span>
+              </div>`).join("")}
+          </div>`).join("")}
+      </div>
+    </div>`).join("");
+
+  return head + blocks;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   3) 키보드 단축키 — 진행 모드에서 결과를 빠르게 찍는다
+      하루 수백 건을 마우스로 고르는 건 현실적으로 너무 느리다.
+   ══════════════════════════════════════════════════════════════════ */
+const KEY_STATUS = {
+  p: "pass", "1": "pass",
+  f: "fail", "2": "fail",
+  b: "blocked", "3": "blocked",
+  n: "na", "4": "na",
+  "0": ""
+};
+
+function focusableRows(){
+  return [...outEl.querySelectorAll("[data-issue][data-idx]")];
+}
+function focusedRow(){
+  return outEl.querySelector(".row-focus");
+}
+function setFocus(row){
+  outEl.querySelectorAll(".row-focus").forEach(r => r.classList.remove("row-focus"));
+  if (!row) return;
+  row.classList.add("row-focus");
+  row.scrollIntoView({ block: "nearest", behavior: "smooth" });
+}
+function moveFocus(step){
+  const rows = focusableRows();
+  if (!rows.length) return;
+  const cur = focusedRow();
+  const idx = cur ? rows.indexOf(cur) : -1;
+  const next = Math.max(0, Math.min(rows.length - 1, idx + step));
+  setFocus(rows[idx === -1 ? 0 : next]);
+}
+
+/** 포커스된 행의 상태를 바꾸고 화면·저장까지 반영한다. */
+function applyStatusToFocused(status){
+  const row = focusedRow();
+  if (!row) { moveFocus(1); return; }
+  const c = findCase(row.dataset.issue);
+  if (!c || !c.result) return;
+  const arr = row.dataset.kind === "cl" ? c.result.checklist : c.result.cases;
+  const idx = +row.dataset.idx;
+  if (!arr || !arr[idx]) return;
+
+  setRowStatus(arr[idx], status);
+  const sel = row.querySelector("select.exec");
+  if (sel){ sel.value = status; sel.className = "exec st-" + (status || "none"); }
+  renderRunSummary();
+  saveWorkset(); scheduleRunSave();
+  moveFocus(1);   // 찍으면 자동으로 다음 항목 — 연속 입력이 끊기지 않게
+}
+
+function toggleDoneOnFocused(){
+  const row = focusedRow();
+  if (!row) return;
+  const box = row.querySelector("input.chk");
+  if (!box) return;
+  box.checked = !box.checked;
+  box.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+document.addEventListener("keydown", e => {
+  // 글자를 입력하는 중이면 단축키를 잡지 않는다.
+  const t = e.target;
+  const typing = t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" ||
+                       t.tagName === "SELECT" || t.isContentEditable);
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+
+  if (e.key === "Escape"){
+    ["cov-modal", "bug-modal", "rev-modal", "keys-modal"].forEach(id => closeModal(id));
+    setFocus(null);
+    return;
+  }
+  if (typing) return;
+
+  if (e.key === "?"){ e.preventDefault(); openModal("keys-modal"); return; }
+  if (!isRun()) return;                       // 결과 입력 단축키는 진행 모드 전용
+
+  if (e.key === "j" || e.key === "ArrowDown"){ e.preventDefault(); moveFocus(1); return; }
+  if (e.key === "k" || e.key === "ArrowUp"){ e.preventDefault(); moveFocus(-1); return; }
+  if (e.key === " "){ e.preventDefault(); toggleDoneOnFocused(); return; }
+  if (e.key === "d"){
+    const row = focusedRow();
+    if (row){ e.preventDefault(); openBugModal(row.dataset.issue, row.dataset.kind, +row.dataset.idx); }
+    return;
+  }
+  const key = e.key.toLowerCase();
+  if (Object.prototype.hasOwnProperty.call(KEY_STATUS, key)){
+    e.preventDefault();
+    applyStatusToFocused(KEY_STATUS[key]);
+  }
+});
+
+// 행을 클릭하면 그 행이 키보드 대상이 된다.
+outEl.addEventListener("click", e => {
+  if (!isRun()) return;
+  if (e.target.closest("button, select, input, a")) return;
+  const row = e.target.closest("[data-issue][data-idx]");
+  if (row) setFocus(row);
+});
+</script>
+</body>
+</html>
