@@ -27,6 +27,7 @@ CSS_DIR = ROOT / "redmine_report" / "static" / "css"
 STYLESHEETS = {
     "dashboard.html": ("base.css", "dashboard.css"),
     "testcases.html": ("base.css", "testcases.css"),
+    "automation.html": ("base.css", "automation.css"),
 }
 
 # JS 안에서 id 를 참조하는 방식들.

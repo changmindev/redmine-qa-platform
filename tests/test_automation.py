@@ -148,3 +148,7 @@ def test_flaky_endpoint_validates_numbers(client):
     upload(client, "web", junit(a="pass"))
     assert client.get("/api/auto/flaky?suite=web&window=abc").status_code == 400
     assert client.get("/api/auto/flaky?suite=web").get_json()["items"] == []
+
+
+def test_automation_page_renders(client):
+    assert client.get("/automation").status_code == 200

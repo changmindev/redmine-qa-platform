@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>자동화 결과 · Redmine QA</title>
+<script>
+  try {
+    var t = localStorage.getItem('tc_theme');
+    if (t) document.documentElement.setAttribute('data-theme', t);
+  } catch (e) {}
+</script>
+<link rel="stylesheet" href="{{ static_url('css/base.css') }}">
+<link rel="stylesheet" href="{{ static_url('css/automation.css') }}">
+</head>
+<body>
+
+<header class="appbar">
+  <div class="appbar-in">
+    <div class="brand"><span class="brand-mark">Q</span><span>Redmine</span> <b>QA</b></div>
+    <nav class="appnav">
+      <a href="/" class="appnav-tab">📊 리포트</a>
+      <a href="/testcases" class="appnav-tab">🧪 테스트케이스</a>
+      <a href="/automation" class="appnav-tab active">🤖 자동화 결과</a>
+    </nav>
+    <div class="appbar-right">
+      <button class="theme-toggle" onclick="toggleTheme()" title="밝은 화면 / 어두운 화면 전환">
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+        <span id="theme-label">다크 모드</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="auto-main">
+  <section class="card">
+    <h2 class="card-title">결과 올리기 <span class="hint">JUnit XML — Playwright <code>--reporter=junit</code> · pytest <code>--junitxml</code></span></h2>
+    <form id="up-form" class="auto-upload">
+      <div class="auto-field">
+        <label for="up-suite">스위트</label>
+        <input type="text" id="up-suite" list="suite-list" placeholder="예: loyalhub-e2e" required>
+        <datalist id="suite-list"></datalist>
+      </div>
+      <div class="auto-field">
+        <label for="up-label">메모 <span class="muted">(선택)</span></label>
+        <input type="text" id="up-label" placeholder="예: main 15567fe">
+      </div>
+      <div class="auto-field">
+        <label for="up-file">결과 파일</label>
+        <input type="file" id="up-file" accept=".xml,application/xml,text/xml" required>
+      </div>
+      <button type="submit" id="up-submit">올리기</button>
+    </form>
+    <p class="auto-msg" id="up-msg" role="status"></p>
+    <p class="modal-help">CI 에서는 같은 주소로 바로 올릴 수 있습니다: <code>curl -F suite=이름 -F file=@results.xml http://허브주소/api/auto/runs</code></p>
+  </section>
+
+  <div class="auto-toolbar">
+    <label for="suite-pick">스위트</label>
+    <select id="suite-pick"></select>
+    <span class="muted" id="run-count"></span>
+  </div>
+
+  <div id="empty" class="empty" hidden>아직 올린 결과가 없습니다. 위에서 JUnit XML 을 올리면 지난 실행과 비교해 보여 줍니다.</div>
+
+  <div id="board" hidden>
+    <section class="card">
+      <h2 class="card-title">지난 실행 대비 <span class="hint" id="cmp-hint"></span></h2>
+      <div class="auto-stats" id="cmp-stats"></div>
+      <div id="cmp-body"></div>
+    </section>
+
+    <section class="card">
+      <h2 class="card-title">불안정 TC <span class="hint">최근 <select id="flaky-window" class="auto-inline"><option>5</option><option selected>10</option><option>20</option><option>50</option></select>회 실행에서 통과↔실패가 2번 이상 뒤바뀐 TC — 매번 실패하는 TC 는 여기 아니라 '계속 실패'에 있습니다</span></h2>
+      <div id="flaky-body"></div>
+    </section>
+
+    <section class="card">
+      <h2 class="card-title">실행 이력</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>올린 시각</th><th>메모</th><th class="num">통과</th><th class="num">실패</th><th class="num">건너뜀</th><th class="num">알려진 결함</th><th></th></tr></thead>
+        <tbody id="runs-body"></tbody>
+      </table></div>
+    </section>
+  </div>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+function toggleTheme(){
+  const html = document.documentElement;
+  const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  html.setAttribute('data-theme', next);
+  try { localStorage.setItem('tc_theme', next); } catch (e) {}
+  syncThemeLabel();
+}
+function syncThemeLabel(){
+  $("#theme-label").textContent = document.documentElement.getAttribute('data-theme') === 'dark' ? '라이트 모드' : '다크 모드';
+}
+
+async function api(url, opts){
+  const res = await fetch(url, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.error) throw new Error(data.error || ("HTTP " + res.status));
+  return data;
+}
+
+let suite = "";
+
+async function loadSuites(select){
+  const { suites } = await api("/api/auto/suites");
+  $("#suite-list").innerHTML = suites.map(s => `<option value="${esc(s)}">`).join("");
+  $("#suite-pick").innerHTML = suites.map(s => `<option>${esc(s)}</option>`).join("");
+  if (!suites.length){ $("#empty").hidden = false; $("#board").hidden = true; return; }
+  suite = select && suites.includes(select) ? select : (suites.includes(suite) ? suite : suites[0]);
+  $("#suite-pick").value = suite;
+  $("#empty").hidden = true; $("#board").hidden = false;
+  await loadBoard();
+}
+
+function caseList(items, empty){
+  if (!items.length) return `<p class="muted auto-none">${empty}</p>`;
+  return `<ul class="auto-list">${items.map(c => `
+    <li><span class="auto-name">${esc(c.name)}</span> <span class="muted">${esc(c.group)}</span>
+    ${c.message ? `<div class="auto-err">${esc(c.message)}</div>` : ""}</li>`).join("")}</ul>`;
+}
+
+async function loadBoard(runId){
+  const q = "suite=" + encodeURIComponent(suite);
+  const [runs, cmp, fl] = await Promise.all([
+    api("/api/auto/runs?" + q),
+    api("/api/auto/compare?" + q + (runId ? "&run_id=" + encodeURIComponent(runId) : "")),
+    api("/api/auto/flaky?" + q + "&window=" + $("#flaky-window").value),
+  ]);
+  $("#run-count").textContent = `실행 ${runs.runs.length}회`;
+
+  $("#cmp-hint").textContent = cmp.previous_id ? "" : "— 첫 실행이라 비교할 앞 실행이 없습니다";
+  const stat = (n, label, cls) => `<div class="auto-stat ${cls}"><b>${n}</b><span>${label}</span></div>`;
+  $("#cmp-stats").innerHTML =
+    stat(cmp.new_fail.length, "새 실패", cmp.new_fail.length ? "is-bad" : "") +
+    stat(cmp.still_fail.length, "계속 실패", cmp.still_fail.length ? "is-warn" : "") +
+    stat(cmp.fixed.length, "고쳐짐", cmp.fixed.length ? "is-good" : "") +
+    stat(cmp.added.length + " / " + cmp.removed.length, "TC 추가 / 사라짐", cmp.removed.length ? "is-warn" : "");
+  $("#cmp-body").innerHTML =
+    `<h3 class="auto-h">새 실패 <span class="muted">— 가장 먼저 볼 것</span></h3>` + caseList(cmp.new_fail, "없습니다.") +
+    `<h3 class="auto-h">계속 실패 <span class="muted">— 결함이 등록돼 있는지만 확인</span></h3>` + caseList(cmp.still_fail, "없습니다.") +
+    `<h3 class="auto-h">고쳐짐 <span class="muted">— 결함을 닫아도 되는지 확인</span></h3>` + caseList(cmp.fixed, "없습니다.") +
+    (cmp.removed.length ? `<h3 class="auto-h">사라진 TC <span class="muted">— 실패 0건이어도 범위가 줄었을 수 있습니다</span></h3><ul class="auto-list">${cmp.removed.map(k => `<li>${esc(k)}</li>`).join("")}</ul>` : "");
+
+  $("#flaky-body").innerHTML = fl.items.length ? `<div class="table-wrap"><table>
+    <thead><tr><th>TC</th><th>이력 <span class="muted">(오래된 → 최근)</span></th><th class="num">뒤바뀜</th><th class="num">실패</th><th>마지막 실패 메시지</th></tr></thead>
+    <tbody>${fl.items.map(x => `<tr><td class="name">${esc(x.name)}<div class="muted">${esc(x.group)}</div></td>
+      <td><code class="auto-hist">${[...x.history].map(m => `<i class="h-${m === "P" ? "p" : m === "F" ? "f" : "n"}">${esc(m)}</i>`).join("")}</code></td>
+      <td class="num">${x.flips}</td><td class="num">${x.fails}/${x.judged}</td><td class="auto-err">${esc(x.last_message)}</td></tr>`).join("")}</tbody>
+  </table></div>` : `<p class="muted auto-none">불안정한 TC 가 없습니다.</p>`;
+
+  const current = cmp.current_id;
+  $("#runs-body").innerHTML = runs.runs.slice().reverse().map(r => `<tr${r.id === current ? ' class="auto-current"' : ""}>
+    <td>${esc(r.created_at)}</td><td>${esc(r.label)}</td>
+    <td class="num">${r.counts.pass}</td><td class="num">${r.counts.fail}</td><td class="num">${r.counts.skip}</td><td class="num">${r.counts.xfail}</td>
+    <td><button type="button" class="ghost btn-sm" data-run="${esc(r.id)}">이 실행 비교</button></td></tr>`).join("");
+}
+
+$("#up-form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const file = $("#up-file").files[0]; if (!file) return;
+  const body = new FormData();
+  body.append("suite", $("#up-suite").value.trim());
+  body.append("label", $("#up-label").value.trim());
+  body.append("file", file);
+  $("#up-submit").disabled = true;
+  $("#up-msg").className = "auto-msg"; $("#up-msg").textContent = "올리는 중…";
+  try {
+    const data = await api("/api/auto/runs", { method: "POST", body });
+    const c = data.compare;
+    $("#up-msg").className = "auto-msg ok";
+    $("#up-msg").textContent = `저장됨 — 새 실패 ${c.new_fail.length} · 계속 실패 ${c.still_fail.length} · 고쳐짐 ${c.fixed.length}`;
+    $("#up-file").value = "";
+    await loadSuites(data.run.suite);
+  } catch (err){
+    $("#up-msg").className = "auto-msg err"; $("#up-msg").textContent = "실패: " + err.message;
+  } finally { $("#up-submit").disabled = false; }
+});
+$("#suite-pick").addEventListener("change", e => { suite = e.target.value; loadBoard(); });
+$("#flaky-window").addEventListener("change", () => loadBoard());
+$("#runs-body").addEventListener("click", e => {
+  const id = e.target.closest("button")?.dataset.run;
+  if (id) loadBoard(id);
+});
+
+syncThemeLabel();
+loadSuites().catch(err => { $("#empty").hidden = false; $("#empty").textContent = "불러오지 못했습니다: " + err.message; });
+</script>
+</body>
+</html>
