@@ -19,7 +19,7 @@
 
 .auto-toolbar { display: flex; align-items: center; gap: var(--sp-3); }
 .auto-toolbar select { min-width: 200px; }
-.auto-inline { padding: 2px 6px; min-height: 0; font-size: 12px; }
+.auto-inline { width: auto; min-height: 0; padding: 2px 30px 2px 8px; font-size: 12px; }
 
 /* 비교 요약 숫자 — 상태는 색만이 아니라 라벨로도 읽히게 둔다 */
 .auto-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--sp-3); margin: var(--sp-3) 0 var(--sp-4); }
@@ -48,3 +48,14 @@
 .auto-hist .h-n { color: var(--text-muted); }
 
 tr.auto-current td { background: var(--accent-soft); }
+
+/* 표는 좁은 화면에서 글자를 한 자씩 꺾지 않고 .table-wrap 안에서 옆으로 넘긴다 */
+.auto-main table { min-width: 640px; }
+@media (max-width: 600px) {
+  .auto-main { padding-inline: var(--sp-3); }
+  .appbar-in { padding: 0 var(--sp-3); gap: var(--sp-3); }
+  .theme-toggle #theme-label { display: none; }
+}
+@media (max-width: 600px) {
+  .auto-main .card-title { flex-wrap: wrap; }
+}
