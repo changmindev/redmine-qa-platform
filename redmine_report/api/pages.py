@@ -27,6 +27,11 @@ def testcases():
     return render_template("testcases.html", default_project=settings.project_id)
 
 
+@bp.get("/automation")
+def automation():
+    return render_template("automation.html")
+
+
 @bp.get("/healthz")
 def healthz():
     """설정이 제대로 됐는지 한눈에 확인 (비밀값은 노출하지 않는다)."""

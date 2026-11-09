@@ -23,6 +23,7 @@
     <nav class="appnav">
       <a href="/" class="appnav-tab">📊 리포트</a>
       <a href="/testcases" class="appnav-tab active">🧪 테스트케이스</a>
+      <a href="/automation" class="appnav-tab">🤖 자동화 결과</a>
     </nav>
     <div class="appbar-right">
       <button class="theme-toggle" onclick="toggleTheme()" title="밝은 화면 / 어두운 화면 전환">
@@ -210,14 +211,27 @@
 
 <div class="modal" id="bug-modal" hidden>
   <div class="modal-box">
-    <h3>🐞 Redmine 결함 등록</h3>
-    <p class="modal-help">실패한 케이스로 Redmine 에 <b id="bug-tracker-name">결함</b> 이슈를 만듭니다. 내용을 확인·수정한 뒤 등록하세요.</p>
-    <label for="bug-subject">제목</label>
-    <input type="text" id="bug-subject" class="dt-input" style="width:100%">
-    <label for="bug-desc">설명</label>
-    <textarea id="bug-desc" rows="12" style="width:100%"></textarea>
+    <h3>🐞 Redmine 결함 등록 <span class="bug-step" id="bug-step">1/2 내용 작성</span></h3>
+    <div id="bug-edit">
+      <p class="modal-help">실패한 케이스로 Redmine 에 <b id="bug-tracker-name">결함</b> 이슈를 만듭니다. 내용을 고친 뒤 미리보기로 넘어가세요 — 미리보기에서 확인해야 등록됩니다.</p>
+      <label for="bug-subject">제목</label>
+      <input type="text" id="bug-subject" class="dt-input" style="width:100%">
+      <label for="bug-desc">설명</label>
+      <textarea id="bug-desc" rows="12" style="width:100%"></textarea>
+    </div>
+    <div id="bug-review" hidden>
+      <p class="modal-help">아래 내용 그대로 등록됩니다. 고칠 곳이 있으면 ‘고치기’로 돌아가세요.</p>
+      <ul class="bug-warn" id="bug-warn" hidden></ul>
+      <div class="bug-preview">
+        <div class="bug-preview-subject" id="bug-preview-subject"></div>
+        <pre class="bug-preview-desc" id="bug-preview-desc"></pre>
+      </div>
+      <label class="bug-confirm"><input type="checkbox" id="bug-confirm"> 재현 절차대로 직접 재현해 확인했습니다</label>
+    </div>
     <div class="modal-actions">
-      <button id="bug-submit">🐞 결함 등록</button>
+      <button id="bug-preview">다음: 미리보기</button>
+      <button id="bug-back" class="ghost" hidden>← 고치기</button>
+      <button id="bug-submit" hidden disabled>🐞 결함 등록</button>
       <button id="bug-cancel" class="ghost">취소</button>
       <span id="bug-msg" class="guide-msg"></span>
     </div>
@@ -1189,20 +1203,59 @@ function openBugModal(issueId, kind, idx){
   }
   $("#bug-subject").value = subject;
   $("#bug-desc").value = desc;
-  $("#bug-msg").className = "guide-msg"; $("#bug-msg").textContent = "";
+  showBugStep("edit");
   $("#bug-modal").hidden = false;
 }
-function closeBugModal(){ $("#bug-modal").hidden = true; bugTarget = null; }
-async function submitBug(){
+// 결함 등록은 2단계다. 서버가 미리보기한 내용에만 확인 토큰을 내주므로,
+// 미리보기를 건너뛰거나 미리보기 뒤에 내용을 바꾸면 등록이 거절된다.
+let bugPreview = null;  // 서버가 돌려준 미리보기(토큰 포함)
+function showBugStep(step){
+  const review = step === "review";
+  $("#bug-edit").hidden = review;
+  $("#bug-review").hidden = !review;
+  $("#bug-preview").hidden = review;
+  $("#bug-back").hidden = !review;
+  $("#bug-submit").hidden = !review;
+  $("#bug-step").textContent = review ? "2/2 확인 후 등록" : "1/2 내용 작성";
+  if (!review){ bugPreview = null; $("#bug-confirm").checked = false; $("#bug-submit").disabled = true; }
+  $("#bug-msg").className = "guide-msg"; $("#bug-msg").textContent = "";
+}
+function closeBugModal(){ $("#bug-modal").hidden = true; bugTarget = null; bugPreview = null; }
+async function previewBug(){
   if (!bugTarget) return;
   const subject = $("#bug-subject").value.trim();
   if (!subject){ $("#bug-msg").className = "guide-msg err"; $("#bug-msg").textContent = "제목을 입력하세요."; return; }
+  const btn = $("#bug-preview"); btn.disabled = true;
+  try {
+    const res = await fetch("/api/redmine_issue/preview", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ project_id: getProject(), subject, description: $("#bug-desc").value }),
+    });
+    const data = await res.json(); if (data.error) throw new Error(data.error);
+    bugPreview = data;
+    $("#bug-preview-subject").textContent = data.subject;
+    $("#bug-preview-desc").textContent = data.description;
+    $("#bug-warn").innerHTML = data.warnings.map(w => `<li>⚠ ${esc(w)}</li>`).join("");
+    $("#bug-warn").hidden = !data.warnings.length;
+    showBugStep("review");
+  } catch (e){
+    $("#bug-msg").className = "guide-msg err"; $("#bug-msg").textContent = "미리보기 실패: " + e.message;
+  } finally { btn.disabled = false; }
+}
+async function submitBug(){
+  if (!bugTarget || !bugPreview) return;
+  if (!$("#bug-confirm").checked){ $("#bug-msg").className = "guide-msg err"; $("#bug-msg").textContent = "직접 확인했는지 체크하세요."; return; }
   const btn = $("#bug-submit"); btn.disabled = true;
   $("#bug-msg").className = "guide-msg"; $("#bug-msg").textContent = "등록 중…";
   try {
     const res = await fetch("/api/redmine_issue", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ project_id: getProject(), subject, description: $("#bug-desc").value }),
+      // 미리보기에서 서버가 돌려준 값을 그대로 보낸다 — 화면 입력칸을 다시 읽지 않는다.
+      body: JSON.stringify({
+        project_id: bugPreview.project_id, subject: bugPreview.subject,
+        description: bugPreview.description, tracker: bugPreview.tracker,
+        confirm_token: bugPreview.confirm_token, confirmed: true,
+      }),
     });
     const data = await res.json(); if (data.error) throw new Error(data.error);
     // 케이스에 결함 링크 기록
@@ -1217,7 +1270,8 @@ async function submitBug(){
     setTimeout(closeBugModal, 700);
   } catch (e){
     $("#bug-msg").className = "guide-msg err"; $("#bug-msg").textContent = "등록 실패: " + e.message;
-  } finally { btn.disabled = false; }
+    btn.disabled = !$("#bug-confirm").checked;
+  }
 }
 
 // ── 엑셀(xlsx) 내보내기 ────────────────────────────────
@@ -1476,6 +1530,9 @@ $("#run-open").addEventListener("click", openRun);
 $("#run-save").addEventListener("click", () => saveRun(false));
 $("#set-delete").addEventListener("click", deleteSet);
 // 결함 등록 모달
+$("#bug-preview").addEventListener("click", previewBug);
+$("#bug-back").addEventListener("click", () => showBugStep("edit"));
+$("#bug-confirm").addEventListener("change", e => { $("#bug-submit").disabled = !e.target.checked; });
 $("#bug-submit").addEventListener("click", submitBug);
 $("#bug-cancel").addEventListener("click", closeBugModal);
 $("#bug-modal").addEventListener("click", e => { if (e.target.id === "bug-modal") closeBugModal(); });

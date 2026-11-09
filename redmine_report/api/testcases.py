@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
+import json
 import logging
+import secrets
 
 from flask import Blueprint, jsonify, request, send_file
 
@@ -277,27 +280,87 @@ def export_xlsx():
     )
 
 
-@bp.post("/redmine_issue")
-def redmine_issue():
-    """실패한 테스트케이스로 Redmine 이슈(결함)를 등록한다."""
-    data = json_body()
+# ── 결함 등록 2단계 확인 ────────────────────────────────
+#   1단계 /redmine_issue/preview : 최종 제목·설명을 서버가 정리해 돌려주고 확인 토큰을 준다.
+#   2단계 /redmine_issue          : 그 토큰과 '사람이 확인했다'는 표시가 있어야만 등록한다.
+#
+#   토큰은 미리보기한 내용 그대로에 서명한 값이라, 미리보기 뒤에 한 글자라도 바뀌면 거절된다.
+#   화면을 거치지 않는 호출(스크립트·AI 도구)도 같은 두 단계를 밟아야 하므로,
+#   "확인 없이 바로 등록"하는 경로가 서버에 아예 없다.
+#   서명 키는 프로세스가 뜰 때마다 새로 만든다 — 서버를 재시작하면 미리보기를 다시 해야 한다.
+_PREVIEW_KEY = secrets.token_bytes(32)
+
+
+def _defect_fields(data: dict) -> dict:
     subject = str(data.get("subject") or "").strip()
     if not subject:
         raise BadRequest("제목을 입력하세요.")
+    return {
+        "project_id": str(data.get("project_id") or ""),
+        "subject": subject,
+        "description": str(data.get("description") or "").replace("\r\n", "\n"),
+        "tracker": str(data.get("tracker") or settings.defect_tracker_name or ""),
+    }
 
-    tracker_name = data.get("tracker") or settings.defect_tracker_name
+
+def _preview_token(fields: dict) -> str:
+    message = json.dumps(fields, ensure_ascii=False, sort_keys=True).encode("utf-8")
+    return hmac.new(_PREVIEW_KEY, message, hashlib.sha256).hexdigest()
+
+
+def _defect_warnings(description: str) -> list[str]:
+    """등록 전에 사람이 한 번 더 볼 곳. 막지는 않는다 — 판단은 확인하는 사람이 한다."""
+    warnings = []
+    for section, hint in (
+        ("[재현 절차]", "재현 절차가 비어 있습니다 — 개발자가 재현하지 못하면 결함이 돌아옵니다."),
+        ("[실제 결과]", "실제 결과가 비어 있습니다 — 기대 결과와 무엇이 달랐는지 적어 주세요."),
+    ):
+        if section in description:
+            body = description.split(section, 1)[1].split("\n\n", 1)[0]
+            if not body.strip():
+                warnings.append(hint)
+    return warnings
+
+
+@bp.post("/redmine_issue/preview")
+def redmine_issue_preview():
+    """1단계: 등록될 내용을 그대로 돌려주고 확인 토큰을 발급한다(아직 등록하지 않는다)."""
+    fields = _defect_fields(json_body())
+    return jsonify(
+        {
+            **fields,
+            "warnings": _defect_warnings(fields["description"]),
+            "confirm_token": _preview_token(fields),
+        }
+    )
+
+
+@bp.post("/redmine_issue")
+def redmine_issue():
+    """2단계: 미리보기에서 사람이 확인한 내용만 Redmine 결함으로 등록한다."""
+    data = json_body()
+    fields = _defect_fields(data)
+    token = str(data.get("confirm_token") or "")
+    if not token:
+        raise BadRequest("미리보기에서 내용을 확인한 뒤 등록하세요.")
+    if not hmac.compare_digest(token, _preview_token(fields)):
+        raise BadRequest("미리보기 뒤에 내용이 바뀌었습니다. 다시 미리보기 하세요.")
+    if data.get("confirmed") is not True:
+        raise BadRequest("'직접 확인했습니다'에 체크해야 등록됩니다.")
+
     issue = redmine.create_issue(
-        data.get("project_id") or None,
-        subject,
-        str(data.get("description") or ""),
-        tracker_id=_resolve_tracker_id(tracker_name),
+        fields["project_id"] or None,
+        fields["subject"],
+        fields["description"],
+        tracker_id=_resolve_tracker_id(fields["tracker"]),
     )
     issue_id = issue.get("id")
+    log.info("결함 등록 #%s (확인 후 등록)", issue_id)
     return jsonify(
         {
             "ok": True,
             "id": issue_id,
             "url": redmine.issue_url(issue_id),
-            "tracker": tracker_name,
+            "tracker": fields["tracker"],
         }
     )

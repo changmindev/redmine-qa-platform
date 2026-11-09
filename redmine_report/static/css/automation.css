@@ -1,0 +1,61 @@
+/* ============================================================
+   automation.css — 자동화 결과 화면 전용
+   색은 base.css 의 상태색 토큰만 쓴다(새 색을 만들지 않는다).
+   ============================================================ */
+
+.auto-main {
+  max-width: 1100px; margin: 0 auto;
+  padding: var(--sp-6) var(--sp-4) var(--sp-10);
+  display: flex; flex-direction: column; gap: var(--sp-5);
+}
+.auto-main code { font-family: var(--mono); font-size: 12px; }
+
+/* 올리기 폼 */
+.auto-upload { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--sp-3); margin-top: var(--sp-3); }
+.auto-field { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 180px; flex: 1; }
+.auto-msg { font-size: 12.5px; color: var(--text-muted); min-height: 1.4em; margin: var(--sp-2) 0; }
+.auto-msg.ok { color: var(--good); }
+.auto-msg.err { color: var(--critical); }
+
+.auto-toolbar { display: flex; align-items: center; gap: var(--sp-3); }
+.auto-toolbar select { min-width: 200px; }
+.auto-inline { width: auto; min-height: 0; padding: 2px 30px 2px 8px; font-size: 12px; }
+
+/* 비교 요약 숫자 — 상태는 색만이 아니라 라벨로도 읽히게 둔다 */
+.auto-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--sp-3); margin: var(--sp-3) 0 var(--sp-4); }
+.auto-stat {
+  display: flex; flex-direction: column; gap: 2px;
+  padding: var(--sp-3) var(--sp-4); border-radius: var(--r-md);
+  background: var(--surface-2); border-left: 3px solid var(--border-strong);
+}
+.auto-stat b { font-size: 22px; font-variant-numeric: tabular-nums; }
+.auto-stat span { font-size: 12px; color: var(--text-muted); }
+.auto-stat.is-bad  { border-left-color: var(--critical); background: var(--critical-soft); }
+.auto-stat.is-warn { border-left-color: var(--warn);     background: var(--warn-soft); }
+.auto-stat.is-good { border-left-color: var(--good);     background: var(--good-soft); }
+
+.auto-h { font-size: 13.5px; font-weight: 700; margin: var(--sp-4) 0 var(--sp-2); }
+.auto-none { font-size: 12.5px; margin: 0; }
+.auto-list { margin: 0; padding-left: var(--sp-5); display: flex; flex-direction: column; gap: var(--sp-2); font-size: 13px; }
+.auto-name { font-weight: 600; }
+.auto-err { font-family: var(--mono); font-size: 11.5px; color: var(--text-2); white-space: pre-wrap; word-break: break-word; margin-top: 2px; }
+
+/* 이력 막대 — P/F 글자를 그대로 두고 색을 덧입힌다(색각 이상에서도 글자로 읽힌다) */
+.auto-hist { display: inline-flex; gap: 2px; }
+.auto-hist i { font-style: normal; width: 16px; text-align: center; border-radius: 3px; font-size: 11px; line-height: 18px; }
+.auto-hist .h-p { background: var(--good-soft); color: var(--text); }
+.auto-hist .h-f { background: var(--critical-soft); color: var(--critical); font-weight: 700; }
+.auto-hist .h-n { color: var(--text-muted); }
+
+tr.auto-current td { background: var(--accent-soft); }
+
+/* 표는 좁은 화면에서 글자를 한 자씩 꺾지 않고 .table-wrap 안에서 옆으로 넘긴다 */
+.auto-main table { min-width: 640px; }
+@media (max-width: 600px) {
+  .auto-main { padding-inline: var(--sp-3); }
+  .appbar-in { padding: 0 var(--sp-3); gap: var(--sp-3); }
+  .theme-toggle #theme-label { display: none; }
+}
+@media (max-width: 600px) {
+  .auto-main .card-title { flex-wrap: wrap; }
+}

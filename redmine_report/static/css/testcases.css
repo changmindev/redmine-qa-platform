@@ -484,3 +484,20 @@ kbd {
   #exportbar button { flex: 1 1 calc(50% - var(--sp-2)); }
   .attach-chip .nm { max-width: 140px; }
 }
+
+/* ── 결함 등록 2단계(작성 → 미리보기 확인) ───────────────── */
+.bug-step { margin-left: var(--sp-2); font-size: 12px; font-weight: 600; color: var(--accent-text); }
+.bug-warn {
+  margin: 0 0 var(--sp-3); padding: var(--sp-2) var(--sp-3) var(--sp-2) var(--sp-6);
+  background: var(--warn-soft); border-radius: var(--r-md); font-size: 12.5px; color: var(--text);
+}
+.bug-preview {
+  border: 1px solid var(--border); border-radius: var(--r-md);
+  background: var(--surface-inset); max-height: 340px; overflow: auto;
+}
+.bug-preview-subject { padding: var(--sp-3); font-weight: 700; border-bottom: 1px solid var(--border); }
+.bug-preview-desc {
+  margin: 0; padding: var(--sp-3); font-family: inherit; font-size: 12.5px;
+  line-height: 1.65; white-space: pre-wrap; word-break: break-word;
+}
+.bug-confirm { display: flex; align-items: center; gap: var(--sp-2); margin-top: var(--sp-3); font-weight: 600; cursor: pointer; }

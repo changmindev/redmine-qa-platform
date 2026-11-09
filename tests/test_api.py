@@ -193,28 +193,77 @@ def test_export_xlsx(client):
     assert "spreadsheetml" in resp.headers["Content-Type"]
 
 
-def test_defect_registration(client, monkeypatch):
+@pytest.fixture()
+def fake_create_issue(monkeypatch):
     monkeypatch.setattr(redmine, "fetch_trackers", lambda: {"결함": 3})
-    captured = {}
+    calls = []
 
     def create_issue(project_id, subject, description, tracker_id=None, priority_id=None):
-        captured.update(subject=subject, tracker_id=tracker_id)
+        calls.append({"subject": subject, "description": description, "tracker_id": tracker_id})
         return {"id": 999}
 
     monkeypatch.setattr(redmine, "create_issue", create_issue)
     tc_api._tracker_ids.clear()
+    return calls
+
+
+DEFECT = {"subject": "로그인 실패 재발", "description": "[재현 절차]\n1. 로그인\n\n[실제 결과]\n500"}
+
+
+def test_defect_registration_after_preview(client, fake_create_issue):
+    preview = client.post("/api/redmine_issue/preview", json=DEFECT).get_json()
+    assert preview["subject"] == DEFECT["subject"]
+    assert preview["warnings"] == []
+    assert fake_create_issue == []  # 미리보기만으로는 등록되지 않는다
 
     resp = client.post(
-        "/api/redmine_issue", json={"subject": "로그인 실패 재발", "description": "..."}
+        "/api/redmine_issue",
+        json={**DEFECT, "confirm_token": preview["confirm_token"], "confirmed": True},
     )
     body = resp.get_json()
     assert body["id"] == 999
     assert body["url"].endswith("/issues/999")
-    assert captured["tracker_id"] == 3
+    assert fake_create_issue[0]["tracker_id"] == 3
 
 
 def test_defect_registration_requires_subject(client):
     assert client.post("/api/redmine_issue", json={"description": "x"}).status_code == 400
+    assert client.post("/api/redmine_issue/preview", json={"description": "x"}).status_code == 400
+
+
+@pytest.mark.parametrize(
+    "extra, message",
+    [
+        ({"confirmed": True}, "미리보기"),  # 토큰 없이 바로 등록
+        ({"confirm_token": "0" * 64, "confirmed": True}, "바뀌었습니다"),  # 위조 토큰
+    ],
+)
+def test_defect_registration_rejected_without_valid_preview(client, fake_create_issue, extra, message):
+    resp = client.post("/api/redmine_issue", json={**DEFECT, **extra})
+    assert resp.status_code == 400
+    assert message in resp.get_json()["error"]
+    assert fake_create_issue == []
+
+
+def test_defect_registration_rejects_edits_after_preview(client, fake_create_issue):
+    token = client.post("/api/redmine_issue/preview", json=DEFECT).get_json()["confirm_token"]
+    edited = {**DEFECT, "description": DEFECT["description"] + " (몰래 추가)"}
+    resp = client.post("/api/redmine_issue", json={**edited, "confirm_token": token, "confirmed": True})
+    assert resp.status_code == 400
+    assert fake_create_issue == []
+
+
+def test_defect_registration_requires_human_confirmation(client, fake_create_issue):
+    token = client.post("/api/redmine_issue/preview", json=DEFECT).get_json()["confirm_token"]
+    resp = client.post("/api/redmine_issue", json={**DEFECT, "confirm_token": token})
+    assert resp.status_code == 400
+    assert fake_create_issue == []
+
+
+def test_defect_preview_warns_on_empty_sections(client):
+    body = {"subject": "x", "description": "[재현 절차]\n\n\n[실제 결과]\n  \n\n(QA 진행)"}
+    warnings = client.post("/api/redmine_issue/preview", json=body).get_json()["warnings"]
+    assert len(warnings) == 2
 
 
 def test_backend_status_endpoint(client):
