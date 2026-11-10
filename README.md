@@ -108,6 +108,7 @@ API 키를 `.env` 에 넣습니다.
 |---|---|
 | `http://localhost:5000` | 이슈 현황 리포트 |
 | `http://localhost:5000/testcases` | 테스트케이스 생성기 |
+| `http://localhost:5000/automation` | 자동화 결과 (지난 실행 대비 · 불안정 TC) |
 | `http://localhost:5000/healthz` | 설정 점검 |
 
 Windows 는 `start.bat`, macOS/Linux 는 `sh start.sh` 로 가상환경 생성부터
@@ -127,6 +128,7 @@ redmine_report/
 │   ├── quality.py      # 릴리스 준비도 · 추적 매트릭스
 │   ├── analyzer.py      # 이슈 → 통계 · 워크로드
 │   ├── extract.py       # PDF/워드/이미지/Figma → 텍스트
+│   ├── automation.py    # JUnit XML 수집 · 지난 실행 대비 비교 · 불안정 TC
 │   └── storage.py       # 세트/지침/리비전 저장 (원자적 쓰기)
 ├── static/, templates/  # 디자인 시스템 + 화면
 tools/check_dom_contract.py   # 템플릿 무결성 검사 (id·CSS·JS 문법)
