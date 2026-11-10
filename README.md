@@ -43,8 +43,9 @@ QA 업무에서 반복되던 일이 출발점입니다. 이슈를 하나씩 열�
 **자동화 결과** — Playwright·pytest·WebdriverIO 가 내보내는 JUnit XML 을 올리면
 지난 실행과 비교해 **새 실패 / 계속 실패 / 고쳐짐 / 사라진 TC** 로 나눠 보여 줍니다.
 통과와 실패가 자꾸 뒤바뀌는 **불안정 TC** 는 따로 모읍니다. CI 에서 올릴 때는
-`curl -F suite=이름 -F file=@results.xml http://<주소>/api/auto/runs` 한 줄이면 됩니다
-(이 저장소 자체에는 아직 CI 워크플로가 없습니다).
+`curl -F suite=이름 -F file=@results.xml http://<주소>/api/auto/runs` 한 줄이면 됩니다.
+이 저장소 자체의 CI(`.github/workflows/ci.yml`)는 pytest·ruff·DOM 계약 검사만 돌립니다 — 이 서버를
+올려 두고 결과를 받는 배포 환경이 아니라서, 자기 자신에게 이 API 를 호출하지는 않습니다.
 
 **요구사항 추적 매트릭스(RTM)** — 이슈 → 테스트케이스 → 실행결과 → 결함을
 한 표로 묶어 "이 기능 테스트했어?"에 근거로 답합니다.
