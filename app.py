@@ -15,4 +15,5 @@ app = create_app()
 if __name__ == "__main__":
     print(f"  대시보드          : http://{settings.host}:{settings.port}/")
     print(f"  테스트케이스 생성기: http://{settings.host}:{settings.port}/testcases")
+    print(f"  자동화 결과        : http://{settings.host}:{settings.port}/automation")
     app.run(host=settings.host, port=settings.port, debug=settings.debug)
