@@ -287,6 +287,11 @@ def generate_report(
             "margin-bottom": "10mm",
             "margin-left": "10mm",
             "margin-right": "10mm",
+            # 리포트에는 이슈 제목처럼 바깥에서 온 글이 들어간다. 이스케이프는 하지만,
+            # wkhtmltopdf 가 스크립트를 돌리거나 로컬 파일을 읽을 길은 아예 닫는다
+            # (pdfkit 1.0.0 CVE-2025-26240 — 고친 버전이 없다). 리포트는 스크립트가 없다.
+            "disable-javascript": "",
+            "disable-local-file-access": "",
         }
         try:
             pdfkit.from_string(html_doc, str(pdf_path), options=options)

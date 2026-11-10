@@ -75,3 +75,29 @@ def test_ttl_cache_get_or_set_calls_factory_once():
     assert cache.get_or_set("k", factory) == "value"
     assert cache.get_or_set("k", factory) == "value"
     assert len(calls) == 1
+
+
+def test_pdf_options_block_script_and_local_files(issue_factory, status_map, monkeypatch, data_dir):
+    # pdfkit 1.0.0 는 고친 버전이 없다(CVE-2025-26240). wkhtmltopdf 옵션으로 막는다.
+    import types
+
+    from redmine_report.config import settings
+    from redmine_report.services import reporting
+
+    seen = {}
+
+    def fake_from_string(html_doc, path, options=None):
+        seen.update(options or {})
+        open(path, "wb").close()
+
+    monkeypatch.setattr(settings, "report_output_dir", data_dir, raising=False)
+    monkeypatch.setattr(reporting, "PDFKIT_AVAILABLE", True)
+    monkeypatch.setattr(
+        reporting, "pdfkit", types.SimpleNamespace(from_string=fake_from_string), raising=False
+    )
+
+    out = reporting.generate_report(_stats(issue_factory, status_map), "2026-07-01", "2026-07-10")
+
+    assert out.suffix == ".pdf"
+    assert "disable-javascript" in seen
+    assert "disable-local-file-access" in seen
