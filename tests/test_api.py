@@ -279,3 +279,23 @@ def test_pdf_endpoint_writes_file(client, fake_redmine, monkeypatch, tmp_path):
     resp = client.get("/api/pdf?date_from=2026-07-01&date_to=2026-07-10")
     assert resp.status_code == 200
     assert list(tmp_path.glob("*.html"))
+
+
+def test_responses_carry_basic_security_headers(client):
+    # 로컬 도구라도 다른 사이트가 이 화면을 iframe 에 넣지 못해야 한다(클릭재킹).
+    resp = client.get("/")
+    assert resp.headers["X-Content-Type-Options"] == "nosniff"
+    assert resp.headers["X-Frame-Options"] == "DENY"
+    assert resp.headers["Referrer-Policy"] == "same-origin"
+
+
+def test_oversized_request_is_rejected_before_reading_body(app, client):
+    # 본문을 다 읽고 나서 크기를 재면 이미 메모리에 올라간 뒤다.
+    limit = app.config["MAX_CONTENT_LENGTH"]
+    resp = client.post(
+        "/api/auto/runs",
+        data=b"x" * (limit + 1),
+        content_type="application/octet-stream",
+    )
+    assert resp.status_code == 413
+    assert "error" in resp.get_json()

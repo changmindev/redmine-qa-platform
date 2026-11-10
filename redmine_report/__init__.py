@@ -102,6 +102,9 @@ def create_app(**overrides) -> Flask:
         # 템플릿을 메모리에 캐시하지 않는다.
         # 이게 꺼져 있으면 화면을 고쳐도 서버를 껐다 켜기 전까지 예전 화면이 그대로 나온다.
         TEMPLATES_AUTO_RELOAD=True,
+        # 업로드 크기 검사는 서비스 계층에도 있지만, 그건 본문을 다 읽은 뒤다.
+        # 여기서 먼저 막아야 아주 큰 요청을 메모리에 올리지 않는다(여유 1MB).
+        MAX_CONTENT_LENGTH=(max(settings.max_upload_mb, 10) + 1) * 1024 * 1024,
         **overrides,
     )
 
@@ -121,6 +124,15 @@ def create_app(**overrides) -> Flask:
             return url_for("static", filename=filename, v=stamp)
 
         return {"static_url": static_url}
+
+    # 로그인 없는 로컬 도구라도, 사용자가 같은 브라우저로 연 다른 사이트가
+    # 이 화면을 iframe 에 넣거나 응답 형식을 추측하게 두지 않는다.
+    @app.after_request
+    def _security_headers(response):
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "same-origin")
+        return response
 
     settings.data_dir.mkdir(parents=True, exist_ok=True)
 
